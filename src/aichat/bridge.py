@@ -90,7 +90,9 @@ class Bridge:
             yield (speaker, self._transcript.entries[-1].content)
 
             last = self._transcript.entries[-1]
-            if "[done]" in last.content.lower():
+            # Strict check: sentinel must appear as the final non-empty line.
+            tail = last.content.rstrip().splitlines()[-1].strip() if last.content.strip() else ""
+            if tail == "<<TASK_COMPLETE>>":
                 logger.info("Stop signal from %s", speaker)
                 break
 
@@ -127,12 +129,18 @@ class Bridge:
             f"You are collaborating on this task:\n"
             f"{self.task}\n\n"
             f"Build on previous ideas. Challenge assumptions. Propose next steps. "
-            f"Be concise. When the task is complete, include [done] in your reply."
+            f"Be concise. Only when the deliverable is fully produced and every "
+            f"participant has had a chance to weigh in, end your reply with the "
+            f"literal token <<TASK_COMPLETE>> on its own final line. Do not use "
+            f"this token casually or as a sign-off."
         )
 
         messages = [Message(role="system", content=system)]
 
-        # Role-remapping: build the conversation view for THIS speaker
+        # Role-remapping: build the conversation view for THIS speaker.
+        # Merge consecutive same-role messages — Anthropic requires strict
+        # user/assistant alternation, and with 3+ participants two non-self
+        # speakers in a row would otherwise produce user/user back-to-back.
         for entry in self._transcript.entries:
             if entry.model == speaker:
                 role = "assistant"
@@ -140,7 +148,11 @@ class Bridge:
             else:
                 role = "user"
                 content = f"{entry.model}: {entry.content}"
-            messages.append(Message(role=role, content=content))
+            if messages and messages[-1].role == role:
+                merged = messages[-1].content + "\n\n" + content
+                messages[-1] = Message(role=role, content=merged)
+            else:
+                messages.append(Message(role=role, content=content))
 
         # Trim context if needed
         messages = self._trim_context(messages)
