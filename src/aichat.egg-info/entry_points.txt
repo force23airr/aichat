@@ -1,0 +1,2 @@
+[console_scripts]
+aichat = aichat.main:main

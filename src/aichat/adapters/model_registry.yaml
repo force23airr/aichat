@@ -1,0 +1,80 @@
+# Built-in registry of known providers.
+# Users can override these in ~/.aichat/config.yaml
+# or add custom providers via the "custom" type.
+
+models:
+  # ---- OpenAI-compatible APIs (use the same adapter) ----
+  openai:
+    type: openai-compatible
+    endpoint: https://api.openai.com/v1/chat/completions
+    auth_header: "Authorization: Bearer {api_key}"
+    default_model: gpt-4.1
+
+  deepseek:
+    type: openai-compatible
+    endpoint: https://api.deepseek.com/v1/chat/completions
+    auth_header: "Authorization: Bearer {api_key}"
+    default_model: deepseek-chat
+
+  groq:
+    type: openai-compatible
+    endpoint: https://api.groq.com/openai/v1/chat/completions
+    auth_header: "Authorization: Bearer {api_key}"
+    default_model: llama-3.1-70b-versatile
+
+  together:
+    type: openai-compatible
+    endpoint: https://api.together.xyz/v1/chat/completions
+    auth_header: "Authorization: Bearer {api_key}"
+    default_model: meta-llama/Llama-3.1-70b-chat
+
+  perplexity:
+    type: openai-compatible
+    endpoint: https://api.perplexity.ai/chat/completions
+    auth_header: "Authorization: Bearer {api_key}"
+    default_model: sonar-pro
+
+  # ---- Anthropic (different request format) ----
+  anthropic:
+    type: anthropic
+    endpoint: https://api.anthropic.com/v1/messages
+    auth_header: "x-api-key: {api_key}"
+    anthropic_version: "2023-06-01"
+    default_model: claude-sonnet-4-20250514
+
+  # ---- Google Gemini ----
+  google:
+    type: gemini
+    endpoint: https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent
+    # API key is passed as a query parameter, not a header
+    auth_header: ""
+    api_key_param: true
+    default_model: gemini-2.0-flash
+
+  # ---- Local models ----
+  ollama:
+    type: openai-compatible      # Use Ollama's OpenAI-compatible endpoint, not /api/chat
+    endpoint: http://localhost:11434/v1/chat/completions
+    auth_header: ""
+    default_model: llama3
+
+  # ---- Friendly aliases ----
+  claude:
+    type: anthropic
+    endpoint: https://api.anthropic.com/v1/messages
+    auth_header: "x-api-key: {api_key}"
+    anthropic_version: "2023-06-01"
+    default_model: claude-sonnet-4-20250514
+
+  gpt:
+    type: openai-compatible
+    endpoint: https://api.openai.com/v1/chat/completions
+    auth_header: "Authorization: Bearer {api_key}"
+    default_model: gpt-4.1
+
+  # ---- Catch-all for any user-defined endpoint ----
+  custom:
+    type: openai-compatible
+    endpoint: ""                # user must provide
+    auth_header: "Authorization: Bearer {api_key}"
+    default_model: ""           # user must provide

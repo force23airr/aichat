@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "aichat"
+version = "0.1.0"
+description = "Let your AI models talk to each other – a CLI for multi-model collaboration"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "httpx",
+    "pyyaml",
+]
+
+[project.scripts]
+aichat = "aichat.main:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+aichat = ["adapters/model_registry.yaml"]
