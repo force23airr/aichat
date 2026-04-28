@@ -1,0 +1,25 @@
+task: "Inspect the mounted smoke-test workspace and summarize what files are available."
+starter: researcher
+max_turns: 1
+
+mcp_servers:
+  smoke_filesystem:
+    command: "python"
+    args:
+      - "-m"
+      - "aichat.mcp_servers.filesystem"
+      - "--root"
+      - "examples/mcp/workspace"
+    description: "Read-only access to the local smoke-test workspace."
+    allowed_tools:
+      - list_directory
+      - read_file
+
+agents:
+  - name: researcher
+    model: claude
+    role: >
+      Inspect the workspace using your assigned filesystem tools. Start by listing
+      the directory, then read relevant files, then summarize what you found.
+    mcp_servers:
+      - smoke_filesystem

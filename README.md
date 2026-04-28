@@ -130,6 +130,40 @@ The provider-neutral tool call format is:
 
 `--enable-tool-calls` implies MCP tool discovery. Use `--max-tool-calls-per-turn` to cap tool activity.
 
+### Filesystem MCP Smoke Test
+
+This repo includes a tiny read-only filesystem MCP server for local testing. It only exposes files under the configured root.
+
+Install MCP support:
+
+```bash
+pip install -e ".[mcp]"
+```
+
+List tools from the smoke server:
+
+```bash
+aichat mcp list --config examples/mcp/filesystem-smoke.yaml
+```
+
+Run a tool-enabled session:
+
+```bash
+aichat task --config examples/mcp/filesystem-smoke.yaml --enable-tool-calls
+```
+
+Docker version:
+
+```bash
+docker build --build-arg EXTRAS=mcp -t aichat:mcp .
+
+docker run --rm \
+  --env-file .env \
+  -v "$PWD:/workspace" \
+  aichat:mcp \
+  task --config examples/mcp/filesystem-smoke.yaml --enable-tool-calls
+```
+
 ## Docker
 
 Build the image:
