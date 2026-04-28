@@ -66,6 +66,17 @@ def main():
         action="store_true",
         help="Connect to configured MCP servers and include discovered tools in agent prompts",
     )
+    task_parser.add_argument(
+        "--enable-tool-calls",
+        action="store_true",
+        help="Allow agents to execute assigned MCP tools during their turns",
+    )
+    task_parser.add_argument(
+        "--max-tool-calls-per-turn",
+        type=int,
+        default=3,
+        help="Maximum MCP tool calls one agent can make in a single turn (default: 3)",
+    )
 
     mcp_parser = sub.add_parser("mcp", help="Inspect configured MCP servers")
     mcp_sub = mcp_parser.add_subparsers(dest="mcp_command", required=True)
@@ -121,6 +132,8 @@ async def run_task(args):
         agents=session["agents"],
         mcp_servers=session["mcp_servers"],
         discover_mcp_tools=args.discover_tools,
+        enable_tool_calls=args.enable_tool_calls,
+        max_tool_calls_per_turn=args.max_tool_calls_per_turn,
     )
 
     try:

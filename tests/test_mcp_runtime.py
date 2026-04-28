@@ -1,7 +1,15 @@
 import pytest
 
 from aichat.config import MCPServerSpec
-from aichat.mcp_runtime import DiscoveredTool, MCPRuntime, MCPRuntimeError, format_discovered_tools
+from aichat.mcp_runtime import (
+    DiscoveredTool,
+    MCPRuntime,
+    MCPRuntimeError,
+    ToolCallParseError,
+    parse_tool_call,
+    format_discovered_tools,
+    validate_arguments,
+)
 
 
 def test_format_discovered_tools():
@@ -37,3 +45,42 @@ def test_runtime_rejects_unknown_server():
         import asyncio
 
         asyncio.run(runtime.list_tools(["missing"]))
+
+
+def test_parse_tool_call_block():
+    call = parse_tool_call(
+        '<tool_call>{"server":"filesystem","tool":"read_file","arguments":{"path":"README.md"}}</tool_call>'
+    )
+
+    assert call.server == "filesystem"
+    assert call.tool == "read_file"
+    assert call.arguments == {"path": "README.md"}
+
+
+def test_parse_tool_call_rejects_multiple_blocks():
+    text = (
+        '<tool_call>{"server":"filesystem","tool":"read_file","arguments":{"path":"a.py"}}</tool_call>'
+        '<tool_call>{"server":"filesystem","tool":"read_file","arguments":{"path":"b.py"}}</tool_call>'
+    )
+
+    with pytest.raises(ToolCallParseError, match="Only one tool_call"):
+        parse_tool_call(text)
+
+
+def test_validate_arguments_checks_required_type_and_enum():
+    schema = {
+        "type": "object",
+        "required": ["path", "mode"],
+        "properties": {
+            "path": {"type": "string"},
+            "mode": {"type": "string", "enum": ["read"]},
+        },
+    }
+
+    validate_arguments(schema, {"path": "README.md", "mode": "read"})
+    with pytest.raises(ToolCallParseError, match="Missing required"):
+        validate_arguments(schema, {"path": "README.md"})
+    with pytest.raises(ToolCallParseError, match="must be string"):
+        validate_arguments(schema, {"path": 1, "mode": "read"})
+    with pytest.raises(ToolCallParseError, match="must be one of"):
+        validate_arguments(schema, {"path": "README.md", "mode": "write"})

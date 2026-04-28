@@ -10,7 +10,16 @@ from typing import List, Optional, Dict
 
 from .adapters.generic import get_adapter, BaseAdapter, Message
 from .config import AgentSpec, MCPServerSpec, agents_from_participants
-from .mcp_runtime import DiscoveredTool, MCPRuntime
+from .mcp_runtime import (
+    DiscoveredTool,
+    MCPRuntime,
+    ToolCall,
+    ToolCallParseError,
+    ToolPermissionError,
+    ToolResult,
+    parse_tool_call,
+    validate_arguments,
+)
 from .transcript import Transcript
 
 logger = logging.getLogger(__name__)
@@ -42,6 +51,8 @@ class Bridge:
         agents: Optional[List[AgentSpec]] = None,
         mcp_servers: Optional[Dict[str, MCPServerSpec]] = None,
         discover_mcp_tools: bool = False,
+        enable_tool_calls: bool = False,
+        max_tool_calls_per_turn: int = 3,
     ):
         self.task = task
         self.starter = starter
@@ -55,6 +66,8 @@ class Bridge:
         self.context_budget = context_budget
         self.mcp_servers = dict(mcp_servers or {})
         self.discover_mcp_tools = discover_mcp_tools
+        self.enable_tool_calls = enable_tool_calls
+        self.max_tool_calls_per_turn = max_tool_calls_per_turn
         self._mcp_tools: Dict[str, List[DiscoveredTool]] = {}
 
         if self.starter not in self.participants:
@@ -144,6 +157,7 @@ class Bridge:
             Message(role="user", content=kickoff),
         ]
         response = await self._call_with_retry(adapter, messages, self.starter)
+        response = await self._resolve_tool_calls(adapter, messages, self.starter, response)
         self._transcript.add(self.starter, response.content)
 
     async def _participant_turn(self, speaker: str) -> None:
@@ -171,7 +185,13 @@ class Bridge:
         # user/assistant alternation, and with 3+ participants two non-self
         # speakers in a row would otherwise produce user/user back-to-back.
         for entry in self._transcript.entries:
-            if entry.model == speaker:
+            if entry.kind == "tool_result":
+                role = "user"
+                content = self._format_tool_result_for_model(entry.content, entry.metadata)
+            elif entry.kind == "tool_call":
+                role = "assistant" if entry.model == speaker else "user"
+                content = self._format_tool_call_for_model(entry.model, entry.metadata)
+            elif entry.model == speaker:
                 role = "assistant"
                 content = entry.content
             else:
@@ -187,6 +207,7 @@ class Bridge:
         messages = self._trim_context(messages)
 
         response = await self._call_with_retry(adapter, messages, speaker)
+        response = await self._resolve_tool_calls(adapter, messages, speaker, response)
         self._transcript.add(speaker, response.content)
 
     # ------------------------------------------------------------------
@@ -245,10 +266,117 @@ class Bridge:
                 self._adapters[agent.name] = get_adapter(agent.provider_alias)
 
     async def _discover_mcp_tools(self) -> None:
-        if not self.discover_mcp_tools or not self.mcp_servers:
+        if not (self.discover_mcp_tools or self.enable_tool_calls) or not self.mcp_servers:
             return
         runtime = MCPRuntime(self.mcp_servers)
         self._mcp_tools = await runtime.list_tools()
+
+    async def _resolve_tool_calls(
+        self,
+        adapter: BaseAdapter,
+        messages: List[Message],
+        speaker: str,
+        response,
+    ):
+        if not self.enable_tool_calls:
+            return response
+
+        tool_calls_used = 0
+        while tool_calls_used < self.max_tool_calls_per_turn:
+            try:
+                tool_call = parse_tool_call(response.content)
+            except ToolCallParseError as exc:
+                tool_result = ToolResult(
+                    server="unknown",
+                    tool="unknown",
+                    arguments={},
+                    ok=False,
+                    content="",
+                    error=str(exc),
+                )
+                self._record_tool_result(speaker, tool_result)
+                messages.extend(
+                    [
+                        Message(role="assistant", content=response.content),
+                        Message(role="user", content=self._tool_result_message(tool_result)),
+                    ]
+                )
+                response = await self._call_with_retry(adapter, messages, speaker)
+                tool_calls_used += 1
+                continue
+
+            if tool_call is None:
+                return response
+
+            self._transcript.add_tool_call(
+                speaker,
+                tool_call.server,
+                tool_call.tool,
+                tool_call.arguments,
+            )
+            tool_result = await self._execute_tool_call(speaker, tool_call)
+            self._record_tool_result(speaker, tool_result)
+            messages.extend(
+                [
+                    Message(role="assistant", content=response.content),
+                    Message(role="user", content=self._tool_result_message(tool_result)),
+                ]
+            )
+            response = await self._call_with_retry(adapter, messages, speaker)
+            tool_calls_used += 1
+
+        return response
+
+    async def _execute_tool_call(self, speaker: str, tool_call: ToolCall) -> ToolResult:
+        try:
+            agent = self._agent_by_name[speaker]
+            self._validate_tool_permission(agent, tool_call)
+            runtime = MCPRuntime(self.mcp_servers)
+            return await runtime.call_tool(tool_call)
+        except (ToolPermissionError, ToolCallParseError, ValueError) as exc:
+            return ToolResult(
+                server=tool_call.server,
+                tool=tool_call.tool,
+                arguments=tool_call.arguments,
+                ok=False,
+                content="",
+                error=str(exc),
+            )
+
+    def _validate_tool_permission(self, agent: AgentSpec, tool_call: ToolCall) -> None:
+        if tool_call.server not in agent.mcp_servers:
+            raise ToolPermissionError(
+                f"Agent '{agent.name}' is not allowed to use MCP server '{tool_call.server}'"
+            )
+        server = self.mcp_servers.get(tool_call.server)
+        if not server:
+            raise ToolPermissionError(f"MCP server '{tool_call.server}' is not configured")
+        if server.allowed_tools and tool_call.tool not in set(server.allowed_tools):
+            raise ToolPermissionError(
+                f"Tool '{tool_call.qualified_name}' is not allowed for server '{tool_call.server}'"
+            )
+
+        discovered = self._tool_for_call(tool_call)
+        if self._mcp_tools.get(tool_call.server) is not None and not discovered:
+            raise ToolPermissionError(f"Tool '{tool_call.qualified_name}' was not discovered")
+        if discovered:
+            validate_arguments(discovered.input_schema, tool_call.arguments)
+
+    def _tool_for_call(self, tool_call: ToolCall) -> DiscoveredTool | None:
+        for tool in self._mcp_tools.get(tool_call.server, []):
+            if tool.name == tool_call.tool:
+                return tool
+        return None
+
+    def _record_tool_result(self, speaker: str, tool_result: ToolResult) -> None:
+        self._transcript.add_tool_result(
+            speaker,
+            tool_result.server,
+            tool_result.tool,
+            ok=tool_result.ok,
+            content=tool_result.content,
+            error=tool_result.error,
+        )
 
     def _agent_identity(self, agent: AgentSpec) -> str:
         lines = [
@@ -279,8 +407,19 @@ class Bridge:
         lines = [
             "Assigned MCP tool surface:",
             "These tool servers are assigned to your role. Treat them as your allowed capabilities.",
-            "If a tool is needed, explicitly request the tool action in your response; the current runtime records the contract but does not execute MCP calls yet.",
         ]
+        if self.enable_tool_calls:
+            lines.extend(
+                [
+                    "When you need a tool, respond with only this exact block:",
+                    '<tool_call>{"server":"server_name","tool":"tool_name","arguments":{}}</tool_call>',
+                    "Do not include analysis outside the tool_call block. After the tool result is returned, continue with your normal response.",
+                ]
+            )
+        else:
+            lines.append(
+                "Tool execution is disabled for this session; discuss needed tool actions in plain language."
+            )
         for server_name in agent.mcp_servers:
             server = self.mcp_servers.get(server_name)
             if not server:
@@ -296,6 +435,27 @@ class Bridge:
             description = f" {server.description}" if server.description else ""
             lines.append(f"- {server.name}: {tools}.{description}")
         return "\n".join(lines)
+
+    def _tool_result_message(self, result: ToolResult) -> str:
+        return (
+            f"Tool result for {result.qualified_name}\n"
+            f"ok: {result.ok}\n"
+            f"content:\n{result.content}\n"
+            f"error: {result.error or ''}"
+        )
+
+    def _format_tool_result_for_model(self, content: str, metadata: Dict) -> str:
+        server = metadata.get("server", "")
+        tool = metadata.get("tool", "")
+        ok = metadata.get("ok", False)
+        error = metadata.get("error", "")
+        return f"Tool result from {server}.{tool} (ok={ok}):\n{content}\n{error}".strip()
+
+    def _format_tool_call_for_model(self, model: str, metadata: Dict) -> str:
+        server = metadata.get("server", "")
+        tool = metadata.get("tool", "")
+        arguments = metadata.get("arguments", {})
+        return f"{model} requested tool {server}.{tool} with arguments: {arguments}"
 
     def _participant_metadata(self) -> Dict[str, str]:
         metadata = {}

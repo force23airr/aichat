@@ -105,6 +105,31 @@ aichat task --config config.example.yaml --discover-tools
 
 Discovery is opt-in because stdio MCP servers execute local commands from config.
 
+Allow agents to execute assigned MCP tools during their turns:
+
+```bash
+aichat task --config config.example.yaml --enable-tool-calls
+```
+
+Tool execution is explicit and permissioned:
+
+```text
+model asks for a tool using <tool_call>{...}</tool_call>
+aichat checks the agent's assigned MCP servers and allowed tools
+aichat validates arguments against the discovered input schema when available
+aichat calls the MCP server
+aichat writes the tool call and result into the transcript
+aichat gives the result back to the same agent so it can continue
+```
+
+The provider-neutral tool call format is:
+
+```text
+<tool_call>{"server":"filesystem","tool":"read_file","arguments":{"path":"README.md"}}</tool_call>
+```
+
+`--enable-tool-calls` implies MCP tool discovery. Use `--max-tool-calls-per-turn` to cap tool activity.
+
 ## Docker
 
 Build the image:
