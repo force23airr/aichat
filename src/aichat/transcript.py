@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import List
+from typing import Dict, List
 
 
 @dataclass
@@ -23,6 +23,7 @@ class Transcript:
 
     task: str
     participants: List[str]
+    participant_metadata: Dict[str, str] = field(default_factory=dict)
     entries: List[Entry] = field(default_factory=list)
 
     def add(self, model: str, content: str) -> None:
@@ -42,9 +43,16 @@ class Transcript:
             f"**Date**: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}",
             f"**Participants**: {', '.join(self.participants)}",
             "",
-            "---",
-            "",
         ]
+        if self.participant_metadata:
+            lines.append("## Participant Roles")
+            lines.append("")
+            for participant in self.participants:
+                metadata = self.participant_metadata.get(participant)
+                if metadata:
+                    lines.append(f"- **{participant}**: {metadata}")
+            lines.append("")
+        lines.extend(["---", ""])
         for i, entry in enumerate(self.entries, start=1):
             lines.append(f"## Turn {i} ({entry.model})")
             lines.append("")

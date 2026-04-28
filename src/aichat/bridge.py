@@ -9,6 +9,7 @@ import logging
 from typing import List, Optional, Dict
 
 from .adapters.generic import get_adapter, BaseAdapter, Message
+from .config import AgentSpec, agents_from_participants
 from .transcript import Transcript
 
 logger = logging.getLogger(__name__)
@@ -37,16 +38,29 @@ class Bridge:
         max_turns: int = 8,
         model_overrides: Optional[Dict[str, str]] = None,
         context_budget: int = 20_000,
+        agents: Optional[List[AgentSpec]] = None,
     ):
         self.task = task
         self.starter = starter
-        self.participants = participants
+        self._agents = self._normalize_agents(participants, agents)
+        self.participants = [agent.name for agent in self._agents]
         self.max_turns = max_turns
-        self.model_overrides = model_overrides or {}
+        self.model_overrides = dict(model_overrides or {})
+        for agent in self._agents:
+            if agent.model_name and agent.name not in self.model_overrides:
+                self.model_overrides[agent.name] = agent.model_name
         self.context_budget = context_budget
 
-        self._transcript = Transcript(task=task, participants=participants)
+        if self.starter not in self.participants:
+            raise ValueError(f"Starter '{self.starter}' must be one of: {', '.join(self.participants)}")
+
+        self._transcript = Transcript(
+            task=task,
+            participants=self.participants,
+            participant_metadata=self._participant_metadata(),
+        )
         self._adapters: Dict[str, BaseAdapter] = {}
+        self._agent_by_name = {agent.name: agent for agent in self._agents}
 
     @property
     def transcript(self) -> Transcript:
@@ -103,9 +117,12 @@ class Bridge:
     async def _starter_turn(self) -> None:
         """The starter model opens with a question or proposal."""
         adapter = self._adapters[self.starter]
+        agent = self._agent_by_name[self.starter]
         system = (
+            f"{self._agent_identity(agent)}\n\n"
             f"You are initiating a collaborative discussion about this task:\n"
             f"{self.task}\n\n"
+            f"{self._team_roster()}\n\n"
             f"Ask the first question, propose an initial idea, or request input "
             f"from the other participants. Be concise. Do NOT solve everything alone."
         )
@@ -124,10 +141,13 @@ class Bridge:
     async def _participant_turn(self, speaker: str) -> None:
         """A participant sees the full conversation and contributes."""
         adapter = self._adapters[speaker]
+        agent = self._agent_by_name[speaker]
 
         system = (
+            f"{self._agent_identity(agent)}\n\n"
             f"You are collaborating on this task:\n"
             f"{self.task}\n\n"
+            f"{self._team_roster()}\n\n"
             f"Build on previous ideas. Challenge assumptions. Propose next steps. "
             f"Be concise. Only when the deliverable is fully produced and every "
             f"participant has had a chance to weigh in, end your reply with the "
@@ -211,6 +231,46 @@ class Bridge:
 
     async def _init_adapters(self) -> None:
         """Lazily create one adapter per participant."""
-        for name in self.participants:
-            if name not in self._adapters:
-                self._adapters[name] = get_adapter(name)
+        for agent in self._agents:
+            if agent.name not in self._adapters:
+                self._adapters[agent.name] = get_adapter(agent.provider_alias)
+
+    def _agent_identity(self, agent: AgentSpec) -> str:
+        lines = [
+            f"You are {agent.name}, an AI participant in a multi-agent collaboration.",
+            f"Provider/model binding: {agent.model}.",
+        ]
+        if agent.role:
+            lines.append(f"Your role: {agent.role}")
+        return "\n".join(lines)
+
+    def _team_roster(self) -> str:
+        lines = ["Participants and roles:"]
+        for agent in self._agents:
+            role = agent.role or "General collaborator."
+            lines.append(f"- {agent.name} ({agent.model}): {role}")
+        return "\n".join(lines)
+
+    def _participant_metadata(self) -> Dict[str, str]:
+        metadata = {}
+        for agent in self._agents:
+            parts = [f"model={agent.model}"]
+            if agent.provider:
+                parts.append(f"provider={agent.provider}")
+            if agent.role:
+                parts.append(f"role={agent.role}")
+            metadata[agent.name] = "; ".join(parts)
+        return metadata
+
+    @staticmethod
+    def _normalize_agents(
+        participants: List[str],
+        agents: Optional[List[AgentSpec]],
+    ) -> List[AgentSpec]:
+        if agents is not None:
+            if not agents:
+                raise ValueError("At least one agent is required")
+            return list(agents)
+        if not participants:
+            raise ValueError("At least one participant is required")
+        return agents_from_participants(participants)

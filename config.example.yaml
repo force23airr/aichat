@@ -1,0 +1,23 @@
+task: "Design a launch plan for a university AI lab"
+starter: planner
+max_turns: 8
+
+agents:
+  - name: planner
+    model: claude
+    role: "Coordinate the collaboration, break the task into steps, and ask other agents for focused input."
+
+  - name: critic
+    model: gpt
+    role: "Challenge weak assumptions, identify missing constraints, and propose safer alternatives."
+
+  - name: researcher
+    model: deepseek
+    role: "Surface factual claims, open questions, and evidence that should be verified."
+
+  - name: quantum_explorer
+    model: ollama:llama3
+    provider: ollama
+    role: "Explore non-obvious alternatives, probabilistic tradeoffs, and optimization angles before the team collapses to one answer."
+    # Reserved for v2 tool runtime. These are parsed today but not executed yet.
+    mcp_servers: []

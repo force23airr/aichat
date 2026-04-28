@@ -15,6 +15,7 @@ import sys
 from pathlib import Path
 
 from .bridge import Bridge
+from .config import agents_from_participants, load_session_config
 from epistemic_classifier import DEFAULT_MODEL, classify_transcript
 
 # Color helpers (no dependencies)
@@ -31,20 +32,26 @@ def main():
     sub = parser.add_subparsers(dest="command", required=True)
 
     task_parser = sub.add_parser("task", help="Start a collaboration session")
-    task_parser.add_argument("goal", help="The task or question for the models")
+    task_parser.add_argument("goal", nargs="?", help="The task or question for the models")
     task_parser.add_argument(
-        "--starter", required=True, help="Model that starts the conversation (e.g., claude)"
+        "--config",
+        type=str,
+        default=None,
+        help="YAML session config with named agents, roles, and models",
+    )
+    task_parser.add_argument(
+        "--starter", default=None, help="Model or agent that starts the conversation (e.g., claude)"
     )
     task_parser.add_argument(
         "--participants",
         nargs="+",
-        required=True,
+        default=None,
         help="List of participant models (including the starter if it should speak again)",
     )
     task_parser.add_argument(
         "--max-turns",
         type=int,
-        default=8,
+        default=None,
         help="Maximum number of turns (default: 8)",
     )
     task_parser.add_argument(
@@ -82,15 +89,17 @@ def main():
 
 
 async def run_task(args):
+    session = _resolve_task_args(args)
     print(f"\n{CYAN}⚡ aichat — Collaborative AI session{RESET}")
-    print(f"{CYAN}Task: {args.goal}{RESET}")
-    print(f"{CYAN}Participants: {', '.join(args.participants)}{RESET}\n")
+    print(f"{CYAN}Task: {session['task']}{RESET}")
+    print(f"{CYAN}Participants: {', '.join(session['participants'])}{RESET}\n")
 
     bridge = Bridge(
-        task=args.goal,
-        starter=args.starter,
-        participants=args.participants,
-        max_turns=args.max_turns,
+        task=session["task"],
+        starter=session["starter"],
+        participants=session["participants"],
+        max_turns=session["max_turns"],
+        agents=session["agents"],
     )
 
     try:
@@ -108,6 +117,40 @@ async def run_task(args):
         print(f"Transcript saved to {outpath}")
     else:
         print(f"Session ended. {len(bridge.transcript.entries)} messages exchanged.")
+
+
+def _resolve_task_args(args):
+    config = load_session_config(args.config) if args.config else None
+
+    task = args.goal or (config.task if config else None)
+    if not task:
+        raise SystemExit("Error: provide a task goal or set 'task' in the config file")
+
+    if config:
+        agents = config.agents
+        participants = config.participants
+        starter = args.starter or config.starter or participants[0]
+        max_turns = args.max_turns if args.max_turns is not None else (config.max_turns or 8)
+    else:
+        if not args.participants:
+            raise SystemExit("Error: --participants is required when --config is not provided")
+        participants = args.participants
+        agents = agents_from_participants(participants)
+        starter = args.starter
+        max_turns = args.max_turns or 8
+
+    if not starter:
+        raise SystemExit("Error: --starter is required when --config does not define starter")
+    if starter not in participants:
+        raise SystemExit(f"Error: starter '{starter}' must be one of: {', '.join(participants)}")
+
+    return {
+        "task": task,
+        "starter": starter,
+        "participants": participants,
+        "max_turns": max_turns,
+        "agents": agents,
+    }
 
 
 def _classification_to_dict(result):
