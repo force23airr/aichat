@@ -4,11 +4,16 @@ ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 
 WORKDIR /app
+ARG EXTRAS=""
 
 COPY pyproject.toml README.md LICENSE ./
 COPY src ./src
 
-RUN pip install --no-cache-dir .
+RUN if [ -n "$EXTRAS" ]; then \
+      pip install --no-cache-dir ".[${EXTRAS}]"; \
+    else \
+      pip install --no-cache-dir .; \
+    fi
 
 WORKDIR /workspace
 

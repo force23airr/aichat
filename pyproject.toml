@@ -14,6 +14,11 @@ dependencies = [
     "pyyaml",
 ]
 
+[project.optional-dependencies]
+mcp = [
+    "mcp",
+]
+
 [project.scripts]
 aichat = "aichat.main:main"
 

@@ -85,12 +85,38 @@ agent = model + role + allowed MCP tools + transcript context
 
 The model is the reasoning engine, while MCP servers define what tools that agent may eventually use.
 
+Install MCP support when you want to inspect live MCP servers:
+
+```bash
+pip install -e ".[mcp]"
+```
+
+List configured MCP tools:
+
+```bash
+aichat mcp list --config config.example.yaml
+```
+
+Run a task and include discovered tools in each assigned agent prompt:
+
+```bash
+aichat task --config config.example.yaml --discover-tools
+```
+
+Discovery is opt-in because stdio MCP servers execute local commands from config.
+
 ## Docker
 
 Build the image:
 
 ```bash
 docker build -t aichat .
+```
+
+Build with MCP SDK support:
+
+```bash
+docker build --build-arg EXTRAS=mcp -t aichat:mcp .
 ```
 
 Run a session with local files mounted:

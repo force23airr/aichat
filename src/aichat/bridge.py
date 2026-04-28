@@ -10,6 +10,7 @@ from typing import List, Optional, Dict
 
 from .adapters.generic import get_adapter, BaseAdapter, Message
 from .config import AgentSpec, MCPServerSpec, agents_from_participants
+from .mcp_runtime import DiscoveredTool, MCPRuntime
 from .transcript import Transcript
 
 logger = logging.getLogger(__name__)
@@ -40,6 +41,7 @@ class Bridge:
         context_budget: int = 20_000,
         agents: Optional[List[AgentSpec]] = None,
         mcp_servers: Optional[Dict[str, MCPServerSpec]] = None,
+        discover_mcp_tools: bool = False,
     ):
         self.task = task
         self.starter = starter
@@ -52,6 +54,8 @@ class Bridge:
                 self.model_overrides[agent.name] = agent.model_name
         self.context_budget = context_budget
         self.mcp_servers = dict(mcp_servers or {})
+        self.discover_mcp_tools = discover_mcp_tools
+        self._mcp_tools: Dict[str, List[DiscoveredTool]] = {}
 
         if self.starter not in self.participants:
             raise ValueError(f"Starter '{self.starter}' must be one of: {', '.join(self.participants)}")
@@ -84,6 +88,7 @@ class Bridge:
         Async generator that yields (model_name, content) after each model speaks.
         Use this in CLI to display messages in real time.
         """
+        await self._discover_mcp_tools()
         await self._init_adapters()
         await self._starter_turn()
         yield (self.starter, self._transcript.entries[-1].content)
@@ -239,6 +244,12 @@ class Bridge:
             if agent.name not in self._adapters:
                 self._adapters[agent.name] = get_adapter(agent.provider_alias)
 
+    async def _discover_mcp_tools(self) -> None:
+        if not self.discover_mcp_tools or not self.mcp_servers:
+            return
+        runtime = MCPRuntime(self.mcp_servers)
+        self._mcp_tools = await runtime.list_tools()
+
     def _agent_identity(self, agent: AgentSpec) -> str:
         lines = [
             f"You are {agent.name}, an AI participant in a multi-agent collaboration.",
@@ -275,7 +286,13 @@ class Bridge:
             if not server:
                 lines.append(f"- {server_name}: declared for this agent but not configured.")
                 continue
-            tools = ", ".join(server.allowed_tools) if server.allowed_tools else "all server tools"
+            discovered = self._mcp_tools.get(server_name, [])
+            if discovered:
+                tools = ", ".join(tool.name for tool in discovered)
+            elif server.allowed_tools:
+                tools = ", ".join(server.allowed_tools)
+            else:
+                tools = "all server tools"
             description = f" {server.description}" if server.description else ""
             lines.append(f"- {server.name}: {tools}.{description}")
         return "\n".join(lines)

@@ -16,6 +16,7 @@ from pathlib import Path
 
 from .bridge import Bridge
 from .config import agents_from_participants, load_session_config
+from .mcp_runtime import MCPRuntime, format_discovered_tools
 from epistemic_classifier import DEFAULT_MODEL, classify_transcript
 
 # Color helpers (no dependencies)
@@ -60,6 +61,22 @@ def main():
         default=None,
         help="Save transcript to a markdown file",
     )
+    task_parser.add_argument(
+        "--discover-tools",
+        action="store_true",
+        help="Connect to configured MCP servers and include discovered tools in agent prompts",
+    )
+
+    mcp_parser = sub.add_parser("mcp", help="Inspect configured MCP servers")
+    mcp_sub = mcp_parser.add_subparsers(dest="mcp_command", required=True)
+    mcp_list = mcp_sub.add_parser("list", help="List tools exposed by configured MCP servers")
+    mcp_list.add_argument("--config", required=True, help="YAML session config")
+    mcp_list.add_argument(
+        "--server",
+        action="append",
+        default=None,
+        help="Specific MCP server to inspect; can be repeated",
+    )
 
     classify_parser = sub.add_parser("classify", help="Classify transcript sentences by epistemic type")
     classify_parser.add_argument("transcript", help="Path to an aichat transcript")
@@ -84,6 +101,8 @@ def main():
 
     if args.command == "task":
         asyncio.run(run_task(args))
+    elif args.command == "mcp":
+        asyncio.run(run_mcp(args))
     elif args.command == "classify":
         run_classify(args)
 
@@ -101,6 +120,7 @@ async def run_task(args):
         max_turns=session["max_turns"],
         agents=session["agents"],
         mcp_servers=session["mcp_servers"],
+        discover_mcp_tools=args.discover_tools,
     )
 
     try:
@@ -118,6 +138,14 @@ async def run_task(args):
         print(f"Transcript saved to {outpath}")
     else:
         print(f"Session ended. {len(bridge.transcript.entries)} messages exchanged.")
+
+
+async def run_mcp(args):
+    if args.mcp_command == "list":
+        config = load_session_config(args.config)
+        runtime = MCPRuntime(config.mcp_servers)
+        tools = await runtime.list_tools(args.server)
+        print(format_discovered_tools(tools))
 
 
 def _resolve_task_args(args):
