@@ -10,6 +10,7 @@ TURN_HEADER = re.compile(r"^#{1,6}\s+Turn\s+\d+\s+\(([^)]+)\)\s*$", re.IGNORECAS
 HEADER = re.compile(r"^#{1,6}\s+")
 BULLET = re.compile(r"^\s*(?:[-*+]\s+|\d+[.)]\s+)(.+?)\s*$")
 SENTENCE_BOUNDARY = re.compile(r"(?<=[.!?])\s+(?=(?:[\"'“”‘’])?[A-Z])")
+CONTROL_TOKENS = {"<<TASK_COMPLETE>>"}
 
 # Common abbreviations whose internal periods must NOT trigger sentence splits.
 # Trailing-period abbreviations (e.g., "Dr." in "Dr. Smith said hi.") and
@@ -72,6 +73,15 @@ def _emit_sentence(
     )
 
 
+def _is_classifiable_sentence(sentence: str) -> bool:
+    cleaned = strip_markdown(sentence)
+    if not cleaned:
+        return False
+    if cleaned in CONTROL_TOKENS:
+        return False
+    return True
+
+
 def segment_text(text: str, speaker: str | None = None) -> list[Segment]:
     segments: list[Segment] = []
     paragraph: list[str] = []
@@ -85,6 +95,8 @@ def segment_text(text: str, speaker: str | None = None) -> list[Segment]:
         block = " ".join(paragraph).strip()
         paragraph = []
         for sentence in split_sentences(block):
+            if not _is_classifiable_sentence(sentence):
+                continue
             segment = _emit_sentence(sentence, speaker, len(segments), prior)
             if segment.cleaned:
                 segments.append(segment)
@@ -112,6 +124,8 @@ def segment_text(text: str, speaker: str | None = None) -> list[Segment]:
             # so a long bullet with several ideas isn't stamped with one label.
             bullet_sentences = split_sentences(bullet_text) or [bullet_text]
             for sentence in bullet_sentences:
+                if not _is_classifiable_sentence(sentence):
+                    continue
                 segment = _emit_sentence(sentence, speaker, len(segments), prior)
                 if segment.cleaned:
                     segments.append(segment)

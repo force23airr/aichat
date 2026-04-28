@@ -68,3 +68,10 @@ def test_bullet_with_multiple_sentences_is_split():
     assert "Second idea here." in cleaned
     assert "Solo bullet." in cleaned
     assert len(cleaned) == 3
+
+
+def test_control_tokens_are_skipped():
+    segments = segment_text("The debate is done.\n<<TASK_COMPLETE>>")
+    cleaned = [segment.cleaned for segment in segments]
+
+    assert cleaned == ["The debate is done."]

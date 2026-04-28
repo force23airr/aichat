@@ -2,6 +2,7 @@ import asyncio
 
 from epistemic_classifier.cache import ClassificationCache
 from epistemic_classifier.classifier import EpistemicClassifier
+from epistemic_classifier.prompts import build_prompt
 from epistemic_classifier.schema import EpistemicType, Verifiability
 
 
@@ -88,3 +89,11 @@ def test_classifier_defaults_to_factual_assertion_after_failures(tmp_path):
     assert result.verifiability == Verifiability.VERIFIABLE
     assert result.confidence == 0.0
     assert provider.calls == 5
+
+
+def test_prompt_contains_argumentative_debate_guidance():
+    prompt = build_prompt("The leap from computation to experience is asserted, not explained.")
+
+    assert "Argumentative debate handling" in prompt
+    assert "Critique of an argument's explanatory structure" in prompt
+    assert "Contested metaphysical stance" in prompt

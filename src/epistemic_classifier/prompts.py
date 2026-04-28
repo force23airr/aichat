@@ -25,6 +25,11 @@ Definitions:
 
 Hedges do not change the epistemic_type. A hedged factual assertion is still a factual_assertion; record the hedge phrases.
 
+Argumentative debate handling:
+- Sentences that evaluate another participant's argument, reasoning, test, or theory as circular, incoherent, unresolved, asserted, unexplained, or not decisive are usually meta or opinion, not factual_assertion.
+- Sentences that restate a participant's position as a position ("Claude assumes...", "GPT argues...", "my theory says...") are meta unless they make a separate checkable claim about the world.
+- In philosophical or strategic debate, do not classify a metaphysical thesis as factual_assertion merely because it has declarative form ("consciousness is computation", "there is no extra ingredient"). Prefer opinion when it is a contested stance, and meta when it is a critique of the argument itself.
+
 Examples:
 
 Sentence: "The US GDP grew by 2.8% in Q4 2025."
@@ -47,6 +52,15 @@ Output: {"epistemic_type": "question", "verifiability": "unverifiable_in_princip
 
 Sentence: "If we positioned this as a B2B tool, the messaging would shift."
 Output: {"epistemic_type": "hypothetical", "verifiability": "unverifiable_in_principle", "subtype": null, "hedge_markers": [], "confidence": 0.93, "reasoning": "Counterfactual scenario introduced with 'if'."}
+
+Sentence: "The leap from computation to experience is asserted, not explained."
+Output: {"epistemic_type": "meta", "verifiability": "unverifiable_in_principle", "subtype": null, "hedge_markers": [], "confidence": 0.9, "reasoning": "Critique of an argument's explanatory structure rather than a directly fact-checkable world claim."}
+
+Sentence: "Consciousness is essentially computation."
+Output: {"epistemic_type": "opinion", "verifiability": "unverifiable_in_principle", "subtype": null, "hedge_markers": [], "confidence": 0.86, "reasoning": "Contested metaphysical stance in a debate, not an independently checkable factual assertion."}
+
+Sentence: "Global Workspace Theory posits that consciousness arises when information is globally available to many subsystems."
+Output: {"epistemic_type": "factual_assertion", "verifiability": "verifiable", "subtype": "definitional", "hedge_markers": [], "confidence": 0.93, "reasoning": "Checkable claim about what a named theory states."}
 
 Now classify this sentence:
 
