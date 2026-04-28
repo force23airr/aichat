@@ -23,3 +23,13 @@ aichat task "Create a 3-point plan to cut cloud costs" --starter claude --partic
 ```
 
 See the conversation unfold in your terminal. Use Ctrl+C to stop early, or add `--max-turns 6` to limit exchanges. Save the transcript with `--output plan.md`.
+
+## Classification
+
+Classify an existing transcript by epistemic type:
+
+```bash
+aichat classify haiku.md
+```
+
+This writes `haiku.md.classified.jsonl` and prints a summary of factual assertions, opinions, predictions, recommendations, hypotheticals, questions, and meta-commentary.
