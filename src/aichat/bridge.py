@@ -9,7 +9,7 @@ import logging
 from typing import List, Optional, Dict
 
 from .adapters.generic import get_adapter, BaseAdapter, Message
-from .config import AgentSpec, agents_from_participants
+from .config import AgentSpec, MCPServerSpec, agents_from_participants
 from .transcript import Transcript
 
 logger = logging.getLogger(__name__)
@@ -39,6 +39,7 @@ class Bridge:
         model_overrides: Optional[Dict[str, str]] = None,
         context_budget: int = 20_000,
         agents: Optional[List[AgentSpec]] = None,
+        mcp_servers: Optional[Dict[str, MCPServerSpec]] = None,
     ):
         self.task = task
         self.starter = starter
@@ -50,6 +51,7 @@ class Bridge:
             if agent.model_name and agent.name not in self.model_overrides:
                 self.model_overrides[agent.name] = agent.model_name
         self.context_budget = context_budget
+        self.mcp_servers = dict(mcp_servers or {})
 
         if self.starter not in self.participants:
             raise ValueError(f"Starter '{self.starter}' must be one of: {', '.join(self.participants)}")
@@ -120,6 +122,7 @@ class Bridge:
         agent = self._agent_by_name[self.starter]
         system = (
             f"{self._agent_identity(agent)}\n\n"
+            f"{self._agent_tool_context(agent)}\n\n"
             f"You are initiating a collaborative discussion about this task:\n"
             f"{self.task}\n\n"
             f"{self._team_roster()}\n\n"
@@ -145,6 +148,7 @@ class Bridge:
 
         system = (
             f"{self._agent_identity(agent)}\n\n"
+            f"{self._agent_tool_context(agent)}\n\n"
             f"You are collaborating on this task:\n"
             f"{self.task}\n\n"
             f"{self._team_roster()}\n\n"
@@ -248,7 +252,32 @@ class Bridge:
         lines = ["Participants and roles:"]
         for agent in self._agents:
             role = agent.role or "General collaborator."
-            lines.append(f"- {agent.name} ({agent.model}): {role}")
+            tool_note = ""
+            if agent.mcp_servers:
+                tool_note = f" MCP: {', '.join(agent.mcp_servers)}."
+            lines.append(f"- {agent.name} ({agent.model}): {role}{tool_note}")
+        return "\n".join(lines)
+
+    def _agent_tool_context(self, agent: AgentSpec) -> str:
+        if not agent.mcp_servers:
+            return (
+                "Assigned MCP tools: none. You can still collaborate through reasoning, "
+                "questions, and review."
+            )
+
+        lines = [
+            "Assigned MCP tool surface:",
+            "These tool servers are assigned to your role. Treat them as your allowed capabilities.",
+            "If a tool is needed, explicitly request the tool action in your response; the current runtime records the contract but does not execute MCP calls yet.",
+        ]
+        for server_name in agent.mcp_servers:
+            server = self.mcp_servers.get(server_name)
+            if not server:
+                lines.append(f"- {server_name}: declared for this agent but not configured.")
+                continue
+            tools = ", ".join(server.allowed_tools) if server.allowed_tools else "all server tools"
+            description = f" {server.description}" if server.description else ""
+            lines.append(f"- {server.name}: {tools}.{description}")
         return "\n".join(lines)
 
     def _participant_metadata(self) -> Dict[str, str]:
@@ -259,6 +288,8 @@ class Bridge:
                 parts.append(f"provider={agent.provider}")
             if agent.role:
                 parts.append(f"role={agent.role}")
+            if agent.mcp_servers:
+                parts.append(f"mcp_servers={','.join(agent.mcp_servers)}")
             metadata[agent.name] = "; ".join(parts)
         return metadata
 

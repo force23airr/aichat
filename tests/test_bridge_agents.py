@@ -1,7 +1,7 @@
 import asyncio
 
 from aichat.bridge import Bridge
-from aichat.config import AgentSpec
+from aichat.config import AgentSpec, MCPServerSpec
 from aichat.adapters.generic import ModelResponse
 
 
@@ -31,8 +31,22 @@ def test_bridge_uses_agent_roles_and_provider_bindings(monkeypatch):
         max_turns=2,
         agents=[
             AgentSpec(name="planner", model="claude", role="Coordinate the team."),
-            AgentSpec(name="critic", model="openai:gpt-4o-mini", role="Challenge assumptions."),
+            AgentSpec(
+                name="critic",
+                model="openai:gpt-4o-mini",
+                role="Challenge assumptions.",
+                mcp_servers=["filesystem"],
+            ),
         ],
+        mcp_servers={
+            "filesystem": MCPServerSpec(
+                name="filesystem",
+                command="mcp-server-filesystem",
+                args=["/workspace"],
+                allowed_tools=["list_directory", "read_file"],
+                description="Read mounted workspace files.",
+            )
+        },
     )
 
     turns = asyncio.run(_collect(bridge))
@@ -44,10 +58,16 @@ def test_bridge_uses_agent_roles_and_provider_bindings(monkeypatch):
     assert bridge.transcript.participant_metadata["planner"] == (
         "model=claude; role=Coordinate the team."
     )
+    assert bridge.transcript.participant_metadata["critic"] == (
+        "model=openai:gpt-4o-mini; role=Challenge assumptions.; mcp_servers=filesystem"
+    )
     first_system_prompt = calls[0][2][0].content
     second_system_prompt = calls[1][2][0].content
     assert "Your role: Coordinate the team." in first_system_prompt
+    assert "Assigned MCP tools: none." in first_system_prompt
     assert "critic (openai:gpt-4o-mini): Challenge assumptions." in second_system_prompt
+    assert "Assigned MCP tool surface:" in second_system_prompt
+    assert "- filesystem: list_directory, read_file. Read mounted workspace files." in second_system_prompt
 
 
 async def _collect(bridge):

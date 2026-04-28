@@ -100,6 +100,7 @@ async def run_task(args):
         participants=session["participants"],
         max_turns=session["max_turns"],
         agents=session["agents"],
+        mcp_servers=session["mcp_servers"],
     )
 
     try:
@@ -128,6 +129,7 @@ def _resolve_task_args(args):
 
     if config:
         agents = config.agents
+        mcp_servers = config.mcp_servers
         participants = config.participants
         starter = args.starter or config.starter or participants[0]
         max_turns = args.max_turns if args.max_turns is not None else (config.max_turns or 8)
@@ -136,6 +138,7 @@ def _resolve_task_args(args):
             raise SystemExit("Error: --participants is required when --config is not provided")
         participants = args.participants
         agents = agents_from_participants(participants)
+        mcp_servers = {}
         starter = args.starter
         max_turns = args.max_turns or 8
 
@@ -150,6 +153,7 @@ def _resolve_task_args(args):
         "participants": participants,
         "max_turns": max_turns,
         "agents": agents,
+        "mcp_servers": mcp_servers,
     }
 
 

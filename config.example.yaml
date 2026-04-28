@@ -2,6 +2,24 @@ task: "Design a launch plan for a university AI lab"
 starter: planner
 max_turns: 8
 
+mcp_servers:
+  filesystem:
+    command: "mcp-server-filesystem"
+    args: ["/workspace"]
+    description: "Read and inspect mounted workspace files."
+    allowed_tools:
+      - list_directory
+      - read_file
+
+  market_data:
+    command: "mcp-server-market-data"
+    args: []
+    description: "Fetch approved market data for research and analysis workflows."
+    allowed_tools:
+      - get_price_history
+      - get_fundamentals
+      - search_symbols
+
 agents:
   - name: planner
     model: claude
@@ -14,10 +32,12 @@ agents:
   - name: researcher
     model: deepseek
     role: "Surface factual claims, open questions, and evidence that should be verified."
+    mcp_servers:
+      - filesystem
 
   - name: quantum_explorer
     model: ollama:llama3
     provider: ollama
     role: "Explore non-obvious alternatives, probabilistic tradeoffs, and optimization angles before the team collapses to one answer."
-    # Reserved for v2 tool runtime. These are parsed today but not executed yet.
-    mcp_servers: []
+    mcp_servers:
+      - market_data

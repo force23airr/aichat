@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from aichat.config import AgentSpec, agents_from_participants, load_session_config
+from aichat.config import AgentSpec, MCPServerSpec, agents_from_participants, load_session_config
 
 
 def test_load_session_config_with_named_agents(tmp_path):
@@ -12,6 +12,14 @@ def test_load_session_config_with_named_agents(tmp_path):
 task: "Plan a launch"
 starter: planner
 max_turns: 4
+mcp_servers:
+  filesystem:
+    command: "mcp-server-filesystem"
+    args: ["/workspace"]
+    env:
+      LOG_LEVEL: "info"
+    description: "Read mounted workspace files."
+    allowed_tools: ["list_directory", "read_file"]
 agents:
   - name: planner
     model: claude
@@ -34,6 +42,14 @@ agents:
     assert config.agents[1].provider_alias == "ollama"
     assert config.agents[1].model_name == "llama3"
     assert config.agents[1].mcp_servers == ["filesystem"]
+    assert config.mcp_servers["filesystem"] == MCPServerSpec(
+        name="filesystem",
+        command="mcp-server-filesystem",
+        args=["/workspace"],
+        env={"LOG_LEVEL": "info"},
+        allowed_tools=["list_directory", "read_file"],
+        description="Read mounted workspace files.",
+    )
 
 
 def test_load_session_config_rejects_unknown_starter(tmp_path):
@@ -49,6 +65,22 @@ agents:
     )
 
     with pytest.raises(ValueError, match="Starter 'missing'"):
+        load_session_config(path)
+
+
+def test_load_session_config_rejects_unknown_mcp_server_ref(tmp_path):
+    path = tmp_path / "aichat.yaml"
+    path.write_text(
+        """
+agents:
+  - name: researcher
+    model: claude
+    mcp_servers: ["missing"]
+""",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="undefined MCP server"):
         load_session_config(path)
 
 

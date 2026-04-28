@@ -33,6 +33,15 @@ task: "Design a launch plan for a university AI lab"
 starter: planner
 max_turns: 8
 
+mcp_servers:
+  filesystem:
+    command: "mcp-server-filesystem"
+    args: ["/workspace"]
+    description: "Read and inspect mounted workspace files."
+    allowed_tools:
+      - list_directory
+      - read_file
+
 agents:
   - name: planner
     model: claude
@@ -46,6 +55,12 @@ agents:
     model: ollama:llama3
     provider: ollama
     role: "Explore non-obvious alternatives and optimization angles."
+
+  - name: researcher
+    model: gpt
+    role: "Gather evidence using approved tools."
+    mcp_servers:
+      - filesystem
 ```
 
 Run it:
@@ -60,7 +75,15 @@ You can override the task from the command line:
 aichat task "Review this trading research workflow" --config config.example.yaml
 ```
 
-`mcp_servers` can be listed in config today as reserved metadata for the upcoming tool runtime, but MCP tools are not executed yet.
+`mcp_servers` declares the tool surface assigned to each agent. In the current version, this is validated, included in the agent prompt, and written into transcript metadata. Actual MCP process execution is the next runtime layer.
+
+The mental model is:
+
+```text
+agent = model + role + allowed MCP tools + transcript context
+```
+
+The model is the reasoning engine, while MCP servers define what tools that agent may eventually use.
 
 ## Docker
 
