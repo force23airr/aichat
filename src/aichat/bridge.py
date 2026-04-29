@@ -289,6 +289,7 @@ class Bridge:
                                 "args": agent.command_args,
                                 "env": agent.command_env,
                                 "timeout": agent.command_timeout,
+                                "cwd": str(agent.command_cwd) if agent.command_cwd else None,
                                 "default_model": agent.model_name or agent.model,
                             }
                         },
@@ -601,6 +602,8 @@ class Bridge:
                 parts.append(f"mcp_servers={','.join(agent.mcp_servers)}")
             if agent.command:
                 parts.append(f"command={agent.command}")
+            if agent.command_cwd:
+                parts.append(f"cwd={agent.command_cwd}")
             metadata[agent.name] = "; ".join(parts)
         return metadata
 

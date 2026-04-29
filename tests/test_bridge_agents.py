@@ -1,4 +1,5 @@
 import asyncio
+from pathlib import Path
 
 from aichat.bridge import Bridge
 from aichat.config import AgentSpec, MCPServerSpec
@@ -320,6 +321,7 @@ def test_bridge_uses_command_adapter_for_command_agent(monkeypatch):
                 command="codex",
                 command_args=["exec", "-"],
                 command_timeout=30,
+                command_cwd=Path("/tmp"),
             )
         ],
     )
@@ -331,6 +333,7 @@ def test_bridge_uses_command_adapter_for_command_agent(monkeypatch):
     assert calls[0][1]["command"]["command"] == "codex"
     assert calls[0][1]["command"]["args"] == ["exec", "-"]
     assert calls[0][1]["command"]["timeout"] == 30
+    assert calls[0][1]["command"]["cwd"] == "/tmp"
 
 
 async def _collect(bridge):

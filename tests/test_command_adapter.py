@@ -57,3 +57,31 @@ def test_command_adapter_reports_missing_executable():
 
     with pytest.raises(RuntimeError, match="executable not found"):
         asyncio.run(adapter.chat([Message(role="user", content="fail")]))
+
+
+def test_command_adapter_runs_in_configured_cwd(tmp_path):
+    adapter = CommandAdapter(
+        {
+            "command": sys.executable,
+            "args": ["-c", "import os; print(os.getcwd())"],
+            "cwd": str(tmp_path),
+        }
+    )
+
+    response = asyncio.run(adapter.chat([Message(role="user", content="where are you")]))
+
+    assert response.content == str(tmp_path)
+
+
+def test_command_adapter_rejects_invalid_cwd(tmp_path):
+    missing = tmp_path / "missing"
+    adapter = CommandAdapter(
+        {
+            "command": sys.executable,
+            "args": ["-c", "print('never')"],
+            "cwd": str(missing),
+        }
+    )
+
+    with pytest.raises(RuntimeError, match="cwd is not a directory"):
+        asyncio.run(adapter.chat([Message(role="user", content="fail")]))

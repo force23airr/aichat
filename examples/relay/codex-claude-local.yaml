@@ -8,6 +8,7 @@ agents:
     provider: command
     command: codex
     args: ["exec", "-"]
+    cwd: ../..
     timeout: 300
     role: >
       Local Codex CLI agent. Inspect the repository context provided by aichat
@@ -18,6 +19,7 @@ agents:
     provider: command
     command: claude
     args: ["-p"]
+    cwd: ../..
     timeout: 300
     role: >
       Local Claude Code agent. Review Codex's proposal, point out risks, and

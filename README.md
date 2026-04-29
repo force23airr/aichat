@@ -190,9 +190,12 @@ agents:
     provider: command
     command: codex
     args: ["exec", "-"]
+    cwd: /path/to/project
     timeout: 120
     role: "A local command-line coding assistant."
 ```
+
+`cwd` is optional. When it is relative, it resolves from the YAML config file's directory, so configs can be run from any shell location.
 
 For CLIs that take the prompt as an argument:
 

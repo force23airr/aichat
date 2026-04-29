@@ -236,6 +236,12 @@ class CommandAdapter(BaseAdapter):
         timeout = int(self.config.get("timeout", 120))
         if timeout <= 0:
             raise ValueError("Command adapter 'timeout' must be positive")
+        cwd = self.config.get("cwd")
+        if cwd is not None:
+            if not isinstance(cwd, str) or not cwd:
+                raise ValueError("Command adapter 'cwd' must be a non-empty string")
+            if not os.path.isdir(cwd):
+                raise RuntimeError(f"Command agent cwd is not a directory: {cwd}")
         env = os.environ.copy()
         configured_env = self.config.get("env", {})
         if isinstance(configured_env, dict):
@@ -248,6 +254,7 @@ class CommandAdapter(BaseAdapter):
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
             env=env,
+            cwd=cwd,
         )
         try:
             stdout, stderr = await asyncio.wait_for(

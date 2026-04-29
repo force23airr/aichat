@@ -36,6 +36,7 @@ class AgentSpec:
     command_args: list[str] = field(default_factory=list)
     command_env: dict[str, str] = field(default_factory=dict)
     command_timeout: int = 120
+    command_cwd: Path | None = None
 
     @property
     def provider_alias(self) -> str:
@@ -74,7 +75,8 @@ def agents_from_participants(participants: list[str]) -> list[AgentSpec]:
 
 
 def load_session_config(path: str | Path) -> SessionConfig:
-    raw = yaml.safe_load(Path(path).read_text(encoding="utf-8")) or {}
+    config_path = Path(path).expanduser().resolve()
+    raw = yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
     if not isinstance(raw, dict):
         raise ValueError("Config file must contain a YAML mapping")
 
@@ -83,7 +85,7 @@ def load_session_config(path: str | Path) -> SessionConfig:
     if not isinstance(raw_agents, list) or not raw_agents:
         raise ValueError("Config file must define a non-empty 'agents' list")
 
-    agents = [_parse_agent(item) for item in raw_agents]
+    agents = [_parse_agent(item, config_path.parent) for item in raw_agents]
     names = [agent.name for agent in agents]
     duplicate_names = sorted({name for name in names if names.count(name) > 1})
     if duplicate_names:
@@ -166,7 +168,7 @@ def _validate_agent_mcp_refs(
             )
 
 
-def _parse_agent(item: Any) -> AgentSpec:
+def _parse_agent(item: Any, config_dir: Path | None = None) -> AgentSpec:
     if not isinstance(item, dict):
         raise ValueError("Each agent must be a YAML mapping")
     name = _required_str(item, "name")
@@ -177,6 +179,7 @@ def _parse_agent(item: Any) -> AgentSpec:
     raw_command_args = item.get("args") or item.get("command_args") or []
     raw_command_env = item.get("env") or item.get("command_env") or {}
     command_timeout = item.get("timeout") or item.get("command_timeout") or 120
+    raw_command_cwd = item.get("cwd") or item.get("working_dir") or item.get("command_cwd")
     if provider is not None and not isinstance(provider, str):
         raise ValueError(f"Agent '{name}' provider must be a string")
     if not isinstance(role, str):
@@ -193,6 +196,7 @@ def _parse_agent(item: Any) -> AgentSpec:
         raise ValueError(f"Agent '{name}' env must be a mapping of strings")
     if not isinstance(command_timeout, int) or command_timeout <= 0:
         raise ValueError(f"Agent '{name}' timeout must be a positive integer")
+    command_cwd = _parse_command_cwd(name, raw_command_cwd, config_dir)
     raw_mcp_servers = item.get("mcp_servers") or []
     if not isinstance(raw_mcp_servers, list) or not all(
         isinstance(server, str) for server in raw_mcp_servers
@@ -208,7 +212,25 @@ def _parse_agent(item: Any) -> AgentSpec:
         command_args=raw_command_args,
         command_env=raw_command_env,
         command_timeout=command_timeout,
+        command_cwd=command_cwd,
     )
+
+
+def _parse_command_cwd(name: str, raw_cwd: Any, config_dir: Path | None) -> Path | None:
+    if raw_cwd in (None, ""):
+        return None
+    if not isinstance(raw_cwd, str):
+        raise ValueError(f"Agent '{name}' cwd must be a string")
+    cwd = Path(raw_cwd).expanduser()
+    if not cwd.is_absolute():
+        cwd = ((config_dir or Path.cwd()) / cwd).resolve()
+    else:
+        cwd = cwd.resolve()
+    if not cwd.exists():
+        raise ValueError(f"Agent '{name}' cwd does not exist: {cwd}")
+    if not cwd.is_dir():
+        raise ValueError(f"Agent '{name}' cwd is not a directory: {cwd}")
+    return cwd
 
 
 def _required_str(item: dict[str, Any], key: str, label: str = "Agent") -> str:

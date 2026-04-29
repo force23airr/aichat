@@ -15,6 +15,7 @@ agents:
     provider: command
     command: codex
     args: ["exec", "-"]
+    cwd: ../..
     timeout: 300
     role: >
       Local Codex CLI agent. Use the repository context and respond with a
