@@ -51,6 +51,16 @@ Available templates:
 - `ollama-codex`: local Ollama model plus local Codex CLI
 - `fusion-mcp`: Fusion-oriented MCP starter config with placeholders
 
+Templates make `aichat` usable without requiring every user to understand providers, command args, working directories, MCP server declarations, or YAML structure first. The user picks the agents they want to connect, runs `doctor` to verify the local machine is ready, then starts the collaboration.
+
+Example outcomes:
+
+- Connect Codex CLI and Claude Code so they can review implementation ideas together.
+- Connect an Ollama model like `gemma4:e2b` with Codex CLI for local/private collaboration.
+- Start from a Fusion MCP config when preparing CAD assistant workflows.
+
+The goal is to move users from "how do I configure this?" to "which agents do I want working together?"
+
 ## Usage
 
 ```bash
