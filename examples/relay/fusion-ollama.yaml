@@ -1,0 +1,11 @@
+task: "Draft a concise message for a Fusion CAD assistant to inspect a simple bracket design."
+starter: local_designer
+max_turns: 1
+
+agents:
+  - name: local_designer
+    model: ollama:gemma4:e2b
+    provider: ollama
+    role: >
+      Prepare precise messages for external CAD assistants. When the message is
+      ready to send to Fusion, use relay mode and address it to fusion_assistant.

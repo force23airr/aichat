@@ -10,7 +10,9 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import getpass
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -28,6 +30,14 @@ from .mcp_runtime import (
     validate_arguments,
 )
 from .relay import RelayDecision, RelayRequest
+from .setup import (
+    CONFIG_PATH,
+    PROVIDER_ENV_VARS,
+    load_dotenv,
+    provider_status,
+    providers_for_agents,
+    update_provider_config,
+)
 from epistemic_classifier import DEFAULT_MODEL, classify_transcript
 
 # Color helpers (no dependencies)
@@ -37,11 +47,28 @@ RESET = "\033[0m"
 
 
 def main():
+    load_dotenv()
     parser = argparse.ArgumentParser(
         prog="aichat",
         description="Multi-model AI collaboration from your terminal.",
     )
     sub = parser.add_subparsers(dest="command", required=True)
+
+    setup_parser = sub.add_parser("setup", help="Configure provider keys and local models")
+    setup_parser.add_argument(
+        "--provider",
+        action="append",
+        choices=["claude", "openai", "deepseek", "google", "groq", "ollama"],
+        help="Provider to configure; can be repeated. Interactive if omitted.",
+    )
+
+    doctor_parser = sub.add_parser("doctor", help="Check local aichat provider setup")
+    doctor_parser.add_argument(
+        "--config",
+        type=str,
+        default=None,
+        help="Optional session config to check required agent providers",
+    )
 
     task_parser = sub.add_parser("task", help="Start a collaboration session")
     task_parser.add_argument("goal", nargs="?", help="The task or question for the models")
@@ -144,6 +171,10 @@ def main():
 
     if args.command == "task":
         asyncio.run(run_task(args))
+    elif args.command == "setup":
+        run_setup(args)
+    elif args.command == "doctor":
+        run_doctor(args)
     elif args.command == "mcp":
         try:
             asyncio.run(run_mcp(args))
@@ -311,7 +342,9 @@ def _resolve_task_args(args):
         mcp_servers = config.mcp_servers
         participants = config.participants
         starter = args.starter or config.starter or participants[0]
-        max_turns = args.max_turns if args.max_turns is not None else (config.max_turns or 8)
+        max_turns = args.max_turns if args.max_turns is not None else (
+            config.max_turns if config.max_turns is not None else 8
+        )
     else:
         if not args.participants:
             raise SystemExit("Error: --participants is required when --config is not provided")
@@ -326,6 +359,8 @@ def _resolve_task_args(args):
     if starter not in participants:
         raise SystemExit(f"Error: starter '{starter}' must be one of: {', '.join(participants)}")
 
+    _warn_missing_providers(agents)
+
     return {
         "task": task,
         "starter": starter,
@@ -334,6 +369,89 @@ def _resolve_task_args(args):
         "agents": agents,
         "mcp_servers": mcp_servers,
     }
+
+
+def run_setup(args) -> None:
+    providers = args.provider or _prompt_setup_providers()
+    for provider in providers:
+        if provider == "ollama":
+            update_provider_config("ollama", "")
+            print("Configured ollama as a local provider. Make sure Ollama is running.")
+            continue
+        env_var = PROVIDER_ENV_VARS.get(provider)
+        if not env_var:
+            print(f"Skipping unknown provider: {provider}")
+            continue
+        key = getpass.getpass(f"{env_var}: ").strip()
+        if key:
+            os.environ[env_var] = key
+            _upsert_local_env(env_var, key)
+        update_provider_config(provider, env_var)
+        if provider == "openai":
+            update_provider_config("gpt", env_var)
+        if provider == "claude":
+            update_provider_config("anthropic", env_var)
+        print(f"Configured {provider} using {env_var}.")
+    print(f"User config: {CONFIG_PATH}")
+
+
+def run_doctor(args) -> None:
+    load_dotenv()
+    providers = ["claude", "gpt", "ollama"]
+    if args.config:
+        config = load_session_config(args.config)
+        providers = providers_for_agents(config.agents)
+    ok = True
+    print("aichat provider setup:")
+    for provider in providers:
+        status = provider_status(provider)
+        marker = "ok" if status.configured else "missing"
+        print(f"  - {provider}: {marker} ({status.detail})")
+        ok = ok and status.configured
+    if not ok:
+        print("Run `aichat setup` or add keys to .env.")
+        raise SystemExit(1)
+
+
+def _prompt_setup_providers() -> list[str]:
+    print("Select providers to configure. Press enter to skip a provider.")
+    selected = []
+    for provider in ("claude", "openai", "deepseek", "google", "groq", "ollama"):
+        answer = input(f"Configure {provider}? [y/N] ").strip().lower()
+        if answer in ("y", "yes"):
+            selected.append(provider)
+    return selected
+
+
+def _upsert_local_env(key: str, value: str) -> None:
+    env_path = Path(".env")
+    lines = []
+    found = False
+    if env_path.exists():
+        for line in env_path.read_text(encoding="utf-8").splitlines():
+            if line.startswith(f"{key}="):
+                lines.append(f"{key}={value}")
+                found = True
+            else:
+                lines.append(line)
+    if not found:
+        lines.append(f"{key}={value}")
+    env_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def _warn_missing_providers(agents) -> None:
+    missing = []
+    for provider in providers_for_agents(agents):
+        status = provider_status(provider)
+        if not status.configured:
+            missing.append(f"{provider} ({status.detail})")
+    if missing:
+        print(
+            "Provider setup warning: "
+            + ", ".join(missing)
+            + ". Run `aichat setup` or use `aichat doctor --config <file>`.",
+            file=sys.stderr,
+        )
 
 
 def _classification_to_dict(result):

@@ -298,5 +298,40 @@ def test_bridge_records_human_approved_relay(monkeypatch):
     assert "Human-supervised relay mode is enabled" in calls[0][2][0].content
 
 
+def test_bridge_uses_command_adapter_for_command_agent(monkeypatch):
+    calls = []
+
+    def fake_get_adapter(provider_alias, user_config=None):
+        calls.append((provider_alias, user_config))
+        return FakeAdapter(provider_alias, [])
+
+    monkeypatch.setattr("aichat.bridge.get_adapter", fake_get_adapter)
+    bridge = Bridge(
+        task="Use local CLI",
+        starter="local_cli",
+        participants=["local_cli"],
+        max_turns=0,
+        agents=[
+            AgentSpec(
+                name="local_cli",
+                model="command:codex",
+                provider="command",
+                role="Use a local command.",
+                command="codex",
+                command_args=["exec", "-"],
+                command_timeout=30,
+            )
+        ],
+    )
+
+    asyncio.run(_collect(bridge))
+
+    assert calls[0][0] == "command"
+    assert calls[0][1]["command"]["type"] == "command"
+    assert calls[0][1]["command"]["command"] == "codex"
+    assert calls[0][1]["command"]["args"] == ["exec", "-"]
+    assert calls[0][1]["command"]["timeout"] == 30
+
+
 async def _collect(bridge):
     return [turn async for turn in bridge.stream()]

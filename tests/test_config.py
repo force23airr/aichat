@@ -84,6 +84,34 @@ agents:
         load_session_config(path)
 
 
+def test_load_session_config_accepts_command_agent(tmp_path):
+    path = tmp_path / "command.yaml"
+    path.write_text(
+        """
+task: "Use local CLI"
+starter: local_cli
+agents:
+  - name: local_cli
+    model: command:echo
+    provider: command
+    command: python
+    args: ["-c", "print('hello from cli')"]
+    timeout: 10
+    role: "Reply through a local command."
+""",
+        encoding="utf-8",
+    )
+
+    config = load_session_config(path)
+    agent = config.agents[0]
+
+    assert agent.provider_alias == "command"
+    assert agent.model_name == "echo"
+    assert agent.command == "python"
+    assert agent.command_args == ["-c", "print('hello from cli')"]
+    assert agent.command_timeout == 10
+
+
 def test_agents_from_participants_preserves_legacy_behavior():
     agents = agents_from_participants(["claude", "gpt"])
 

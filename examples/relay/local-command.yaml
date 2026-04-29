@@ -1,0 +1,16 @@
+task: "Ask a local command-line assistant to prove it can receive a conversation from aichat."
+starter: local_cli_assistant
+max_turns: 0
+
+agents:
+  - name: local_cli_assistant
+    model: command:demo
+    provider: command
+    command: python
+    args:
+      - "-c"
+      - "import sys; prompt=sys.stdin.read(); print('Local CLI assistant received the conversation and recommends keeping the next step small, testable, and transcript-backed.')"
+    timeout: 30
+    role: >
+      Represents a local command-line AI assistant. Replace command/args with
+      a real CLI such as Codex CLI, Claude Code, or another local assistant.

@@ -4,17 +4,30 @@ Let your AI models collaborate from the terminal.
 
 ## Setup
 
-1. Set API keys as environment variables (at least one):
-   ```bash
-   export ANTHROPIC_API_KEY=sk-ant-...
-   export OPENAI_API_KEY=sk-...
-   export DEEPSEEK_API_KEY=sk-...
-   ```
-
-2. Install:
+1. Install:
    ```bash
    pip install -e .
    ```
+
+2. Configure providers:
+   ```bash
+   aichat setup
+   ```
+
+   You can also use a local `.env` file:
+
+   ```bash
+   ANTHROPIC_API_KEY=sk-ant-...
+   OPENAI_API_KEY=sk-...
+   DEEPSEEK_API_KEY=sk-...
+   ```
+
+3. Check setup:
+   ```bash
+   aichat doctor
+   ```
+
+For Docker, pass the same keys with `--env-file .env`.
 
 ## Usage
 
@@ -155,6 +168,51 @@ The CLI pauses with approval options:
 ```
 
 Every proposed relay and human decision is written into the transcript. This is the safe path for connecting a project-aware model to another assistant, CAD tool, MCP server, or human-operated workflow.
+
+Use a local Ollama model for relay testing:
+
+```bash
+ollama run gemma4:e2b "Say ready."
+
+aichat task \
+  --config examples/relay/fusion-ollama.yaml \
+  --human-relay
+```
+
+## Local Command Agents
+
+Use a command-backed agent when you want `aichat` to talk to another local CLI program without copy/paste. The command receives the conversation prompt on stdin unless one of its args contains `{prompt}`.
+
+```yaml
+agents:
+  - name: local_code_assistant
+    model: command:codex
+    provider: command
+    command: codex
+    args: ["exec", "-"]
+    timeout: 120
+    role: "A local command-line coding assistant."
+```
+
+For CLIs that take the prompt as an argument:
+
+```yaml
+agents:
+  - name: local_code_assistant
+    model: command:assistant
+    provider: command
+    command: assistant-cli
+    args: ["run", "{prompt}"]
+    timeout: 120
+```
+
+Try the built-in demo that uses Python as the local command:
+
+```bash
+aichat task --config examples/relay/local-command.yaml
+```
+
+This is the non-copy/paste bridge for local tools. Fully live terminal attachment depends on whether the target app exposes a stable CLI, API, MCP server, or stdio mode.
 
 ### Filesystem MCP Smoke Test
 

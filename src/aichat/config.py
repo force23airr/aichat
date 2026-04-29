@@ -32,6 +32,10 @@ class AgentSpec:
     role: str = ""
     provider: str | None = None
     mcp_servers: list[str] = field(default_factory=list)
+    command: str | None = None
+    command_args: list[str] = field(default_factory=list)
+    command_env: dict[str, str] = field(default_factory=dict)
+    command_timeout: int = 120
 
     @property
     def provider_alias(self) -> str:
@@ -169,10 +173,26 @@ def _parse_agent(item: Any) -> AgentSpec:
     model = _required_str(item, "model")
     provider = item.get("provider")
     role = item.get("role") or ""
+    command = item.get("command")
+    raw_command_args = item.get("args") or item.get("command_args") or []
+    raw_command_env = item.get("env") or item.get("command_env") or {}
+    command_timeout = item.get("timeout") or item.get("command_timeout") or 120
     if provider is not None and not isinstance(provider, str):
         raise ValueError(f"Agent '{name}' provider must be a string")
     if not isinstance(role, str):
         raise ValueError(f"Agent '{name}' role must be a string")
+    if command is not None and not isinstance(command, str):
+        raise ValueError(f"Agent '{name}' command must be a string")
+    if not isinstance(raw_command_args, list) or not all(
+        isinstance(arg, str) for arg in raw_command_args
+    ):
+        raise ValueError(f"Agent '{name}' args must be a list of strings")
+    if not isinstance(raw_command_env, dict) or not all(
+        isinstance(key, str) and isinstance(value, str) for key, value in raw_command_env.items()
+    ):
+        raise ValueError(f"Agent '{name}' env must be a mapping of strings")
+    if not isinstance(command_timeout, int) or command_timeout <= 0:
+        raise ValueError(f"Agent '{name}' timeout must be a positive integer")
     raw_mcp_servers = item.get("mcp_servers") or []
     if not isinstance(raw_mcp_servers, list) or not all(
         isinstance(server, str) for server in raw_mcp_servers
@@ -184,6 +204,10 @@ def _parse_agent(item: Any) -> AgentSpec:
         provider=provider,
         role=role.strip(),
         mcp_servers=raw_mcp_servers,
+        command=command.strip() if command else None,
+        command_args=raw_command_args,
+        command_env=raw_command_env,
+        command_timeout=command_timeout,
     )
 
 

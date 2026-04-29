@@ -279,7 +279,22 @@ class Bridge:
         """Lazily create one adapter per participant."""
         for agent in self._agents:
             if agent.name not in self._adapters:
-                self._adapters[agent.name] = get_adapter(agent.provider_alias)
+                if agent.command:
+                    self._adapters[agent.name] = get_adapter(
+                        agent.provider_alias,
+                        user_config={
+                            agent.provider_alias: {
+                                "type": "command",
+                                "command": agent.command,
+                                "args": agent.command_args,
+                                "env": agent.command_env,
+                                "timeout": agent.command_timeout,
+                                "default_model": agent.model_name or agent.model,
+                            }
+                        },
+                    )
+                else:
+                    self._adapters[agent.name] = get_adapter(agent.provider_alias)
 
     async def _discover_mcp_tools(self) -> None:
         if not (self.discover_mcp_tools or self.enable_tool_calls) or not self.mcp_servers:
@@ -584,6 +599,8 @@ class Bridge:
                 parts.append(f"role={agent.role}")
             if agent.mcp_servers:
                 parts.append(f"mcp_servers={','.join(agent.mcp_servers)}")
+            if agent.command:
+                parts.append(f"command={agent.command}")
             metadata[agent.name] = "; ".join(parts)
         return metadata
 

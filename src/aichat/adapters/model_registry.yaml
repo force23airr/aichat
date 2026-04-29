@@ -58,6 +58,13 @@ models:
     auth_header: ""
     default_model: llama3
 
+  command:
+    type: command
+    command: ""                  # set per agent or in ~/.aichat/config.yaml
+    args: []
+    timeout: 120
+    default_model: command
+
   # ---- Friendly aliases ----
   claude:
     type: anthropic

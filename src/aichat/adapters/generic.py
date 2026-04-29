@@ -5,6 +5,7 @@ Handles OpenAI-compatible, Anthropic, and Google Gemini APIs.
 
 from __future__ import annotations
 
+import asyncio
 import os
 import logging
 from dataclasses import dataclass
@@ -208,6 +209,59 @@ class GeminiAdapter(BaseAdapter):
         return ModelResponse(content=content, model=model)
 
 
+class CommandAdapter(BaseAdapter):
+    """Runs a local command as an agent and captures stdout as the reply."""
+
+    async def chat(
+        self,
+        messages: List[Message],
+        model: Optional[str] = None,
+        max_tokens: int = 500,
+        temperature: float = 0.7,
+        **kwargs
+    ) -> ModelResponse:
+        command = self.config.get("command")
+        if not command:
+            raise ValueError("Command adapter requires a 'command' value")
+        args = self.config.get("args", [])
+        if not isinstance(args, list) or not all(isinstance(arg, str) for arg in args):
+            raise ValueError("Command adapter 'args' must be a list of strings")
+
+        prompt = _format_command_prompt(messages)
+        rendered_args = [arg.replace("{prompt}", prompt) for arg in args]
+        prompt_in_args = any("{prompt}" in arg for arg in args)
+        timeout = int(self.config.get("timeout", 120))
+        env = os.environ.copy()
+        configured_env = self.config.get("env", {})
+        if isinstance(configured_env, dict):
+            env.update({str(key): str(value) for key, value in configured_env.items()})
+
+        process = await asyncio.create_subprocess_exec(
+            command,
+            *rendered_args,
+            stdin=None if prompt_in_args else asyncio.subprocess.PIPE,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+            env=env,
+        )
+        try:
+            stdout, stderr = await asyncio.wait_for(
+                process.communicate(None if prompt_in_args else prompt.encode("utf-8")),
+                timeout=timeout,
+            )
+        except asyncio.TimeoutError as exc:
+            process.kill()
+            await process.wait()
+            raise RuntimeError(f"Command agent timed out after {timeout}s: {command}") from exc
+
+        stdout_text = stdout.decode("utf-8", errors="replace").strip()
+        stderr_text = stderr.decode("utf-8", errors="replace").strip()
+        if process.returncode != 0:
+            detail = stderr_text or stdout_text or f"exit code {process.returncode}"
+            raise RuntimeError(f"Command agent failed: {detail}")
+        return ModelResponse(content=stdout_text, model=model or self.config.get("default_model") or command)
+
+
 # ---------------------------------------------------------------------------
 # Factory
 # ---------------------------------------------------------------------------
@@ -217,6 +271,7 @@ _ADAPTER_MAP: ClassVar[Dict[str, type]] = {
     "openai-compatible": OpenAICompatibleAdapter,
     "anthropic": AnthropicAdapter,
     "gemini": GeminiAdapter,
+    "command": CommandAdapter,
 }
 
 
@@ -241,12 +296,24 @@ def get_adapter(
     with open(builtin_registry_path, 'r') as f:
         builtin = yaml.safe_load(f).get('models', {})
 
+    if user_config is None:
+        try:
+            from aichat.setup import load_user_config
+
+            raw_user_config = load_user_config()
+            user_config = raw_user_config.get("providers") or {}
+        except Exception as exc:
+            logger.debug("Could not load user provider config: %s", exc)
+            user_config = None
+
     # Merge user config if any (always copy, never mutate the registry)
     config: Dict[str, Any] = {}
-    if user_config and provider_alias in user_config:
-        config = dict(user_config[provider_alias])
-    elif provider_alias in builtin:
+    if provider_alias in builtin:
         config = dict(builtin[provider_alias])
+        if user_config and provider_alias in user_config:
+            config.update(dict(user_config[provider_alias]))
+    elif user_config and provider_alias in user_config:
+        config = dict(user_config[provider_alias])
     else:
         # Assume custom OpenAI-compatible
         config = dict(builtin.get('custom', {}))
@@ -312,5 +379,12 @@ def _substitute_env_vars(config: Dict[str, Any]) -> Dict[str, Any]:
         else:
             new_config[key] = value
     return new_config
+
+
+def _format_command_prompt(messages: List[Message]) -> str:
+    parts = []
+    for message in messages:
+        parts.append(f"{message.role.upper()}:\n{message.content}")
+    return "\n\n".join(parts)
 
     
