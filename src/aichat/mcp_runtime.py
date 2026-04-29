@@ -45,6 +45,20 @@ class ToolResult:
     def qualified_name(self) -> str:
         return f"{self.server}.{self.tool}"
 
+    def to_dict(self) -> dict[str, Any]:
+        payload: dict[str, Any] = {
+            "server": self.server,
+            "tool": self.tool,
+            "arguments": self.arguments,
+            "ok": self.ok,
+            "content": self.content,
+        }
+        if self.structured_content is not None:
+            payload["structured_content"] = self.structured_content
+        if self.error:
+            payload["error"] = self.error
+        return payload
+
 
 class MCPRuntimeError(RuntimeError):
     pass
@@ -256,6 +270,26 @@ def format_discovered_tools(tools_by_server: dict[str, list[DiscoveredTool]]) ->
             if tool.input_schema:
                 schema = json.dumps(tool.input_schema, sort_keys=True)
                 lines.append(f"    input_schema: {schema}")
+    return "\n".join(lines)
+
+
+def format_tool_result(result: ToolResult) -> str:
+    status = "ok" if result.ok else "error"
+    lines = [
+        f"{result.qualified_name}: {status}",
+    ]
+    if result.content:
+        lines.extend(["", result.content])
+    if result.structured_content is not None:
+        lines.extend(
+            [
+                "",
+                "structured_content:",
+                json.dumps(result.structured_content, indent=2, ensure_ascii=False, sort_keys=True),
+            ]
+        )
+    if result.error:
+        lines.extend(["", f"error: {result.error}"])
     return "\n".join(lines)
 
 

@@ -4,6 +4,7 @@ from aichat.bridge import Bridge
 from aichat.config import AgentSpec, MCPServerSpec
 from aichat.adapters.generic import ModelResponse
 from aichat.mcp_runtime import ToolResult
+from aichat.relay import RelayDecision
 
 
 class FakeAdapter:
@@ -249,6 +250,52 @@ def test_bridge_denies_unassigned_tool_call(monkeypatch):
     assert bridge.transcript.entries[1].kind == "tool_result"
     assert not bridge.transcript.entries[1].metadata["ok"]
     assert "not allowed" in bridge.transcript.entries[1].content
+
+
+def test_bridge_records_human_approved_relay(monkeypatch):
+    calls = []
+
+    def fake_get_adapter(provider_alias):
+        return SequenceAdapter(
+            provider_alias,
+            calls,
+            [
+                '<relay>{"to":"fusion_assistant","message":"Create a 40mm bracket sketch.","reason":"CAD handoff"}</relay>',
+            ],
+        )
+
+    async def approve(speaker, request):
+        assert speaker == "designer"
+        assert request.target == "fusion_assistant"
+        return RelayDecision(action="send", message=request.message)
+
+    monkeypatch.setattr("aichat.bridge.get_adapter", fake_get_adapter)
+    bridge = Bridge(
+        task="Prepare CAD instructions",
+        starter="designer",
+        participants=["designer"],
+        max_turns=0,
+        agents=[
+            AgentSpec(
+                name="designer",
+                model="claude",
+                role="Prepare instructions for CAD assistants.",
+            )
+        ],
+        human_relay=True,
+        relay_approver=approve,
+    )
+
+    turns = asyncio.run(_collect(bridge))
+
+    assert turns == [("designer", "[Relay approved to fusion_assistant]\n\nCreate a 40mm bracket sketch.")]
+    assert [entry.kind for entry in bridge.transcript.entries] == [
+        "relay_request",
+        "relay_decision",
+        "message",
+    ]
+    assert bridge.transcript.entries[1].metadata["approved"] is True
+    assert "Human-supervised relay mode is enabled" in calls[0][2][0].content
 
 
 async def _collect(bridge):

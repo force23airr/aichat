@@ -16,7 +16,18 @@ from pathlib import Path
 
 from .bridge import Bridge
 from .config import agents_from_participants, load_session_config
-from .mcp_runtime import MCPRuntime, format_discovered_tools
+from .mcp_runtime import (
+    DiscoveredTool,
+    MCPRuntime,
+    MCPRuntimeError,
+    ToolCall,
+    ToolCallParseError,
+    format_discovered_tools,
+    format_tool_result,
+    mcp_sdk_available,
+    validate_arguments,
+)
+from .relay import RelayDecision, RelayRequest
 from epistemic_classifier import DEFAULT_MODEL, classify_transcript
 
 # Color helpers (no dependencies)
@@ -77,6 +88,11 @@ def main():
         default=3,
         help="Maximum MCP tool calls one agent can make in a single turn (default: 3)",
     )
+    task_parser.add_argument(
+        "--human-relay",
+        action="store_true",
+        help="Pause for human approval when an agent proposes a relay message",
+    )
 
     mcp_parser = sub.add_parser("mcp", help="Inspect configured MCP servers")
     mcp_sub = mcp_parser.add_subparsers(dest="mcp_command", required=True)
@@ -88,6 +104,22 @@ def main():
         default=None,
         help="Specific MCP server to inspect; can be repeated",
     )
+    mcp_call = mcp_sub.add_parser("call", help="Call one configured MCP tool directly")
+    mcp_call.add_argument("--config", required=True, help="YAML session config")
+    mcp_call.add_argument("--server", required=True, help="Configured MCP server name")
+    mcp_call.add_argument("--tool", required=True, help="Tool name to call")
+    mcp_call.add_argument(
+        "--arguments",
+        default="{}",
+        help='JSON object passed as tool arguments, e.g. \'{"path":"README.md"}\'',
+    )
+    mcp_call.add_argument(
+        "--json",
+        action="store_true",
+        help="Print the full tool result as JSON",
+    )
+    mcp_doctor = mcp_sub.add_parser("doctor", help="Check MCP SDK and configured servers")
+    mcp_doctor.add_argument("--config", required=True, help="YAML session config")
 
     classify_parser = sub.add_parser("classify", help="Classify transcript sentences by epistemic type")
     classify_parser.add_argument("transcript", help="Path to an aichat transcript")
@@ -113,7 +145,11 @@ def main():
     if args.command == "task":
         asyncio.run(run_task(args))
     elif args.command == "mcp":
-        asyncio.run(run_mcp(args))
+        try:
+            asyncio.run(run_mcp(args))
+        except (MCPRuntimeError, ToolCallParseError, ValueError) as exc:
+            print(f"Error: {exc}", file=sys.stderr)
+            sys.exit(1)
     elif args.command == "classify":
         run_classify(args)
 
@@ -134,6 +170,8 @@ async def run_task(args):
         discover_mcp_tools=args.discover_tools,
         enable_tool_calls=args.enable_tool_calls,
         max_tool_calls_per_turn=args.max_tool_calls_per_turn,
+        human_relay=args.human_relay,
+        relay_approver=_approve_relay_cli if args.human_relay else None,
     )
 
     try:
@@ -153,12 +191,112 @@ async def run_task(args):
         print(f"Session ended. {len(bridge.transcript.entries)} messages exchanged.")
 
 
+async def _approve_relay_cli(speaker: str, request: RelayRequest) -> RelayDecision:
+    print(f"\n{CYAN}Relay approval requested{RESET}")
+    print(f"From: {speaker}")
+    print(f"To: {request.target}")
+    if request.reason:
+        print(f"Reason: {request.reason}")
+    print("\nProposed message:")
+    print(request.message)
+    print(
+        "\nChoose: "
+        "[1] send as-is  "
+        "[2] edit before sending  "
+        "[3] ask for clarification  "
+        "[4] reject"
+    )
+
+    while True:
+        choice = (await asyncio.to_thread(input, "relay> ")).strip().lower()
+        if choice in ("1", "send", "s"):
+            return RelayDecision(action="send", message=request.message)
+        if choice in ("2", "edit", "e"):
+            edited = await asyncio.to_thread(input, "edited message> ")
+            message = edited.strip() or request.message
+            return RelayDecision(action="send", message=message, note="Human edited before sending.")
+        if choice in ("3", "clarify", "c"):
+            prompt = await asyncio.to_thread(input, "clarification request> ")
+            return RelayDecision(
+                action="clarify",
+                message=prompt.strip() or "Please clarify why this relay should be sent.",
+            )
+        if choice in ("4", "reject", "r", "no", "n"):
+            note = await asyncio.to_thread(input, "rejection note> ")
+            return RelayDecision(action="reject", note=note.strip())
+        print("Choose 1, 2, 3, or 4.")
+
+
 async def run_mcp(args):
+    config = load_session_config(args.config)
+    runtime = MCPRuntime(config.mcp_servers)
     if args.mcp_command == "list":
-        config = load_session_config(args.config)
-        runtime = MCPRuntime(config.mcp_servers)
         tools = await runtime.list_tools(args.server)
         print(format_discovered_tools(tools))
+    elif args.mcp_command == "call":
+        arguments = _parse_json_object(args.arguments, "--arguments")
+        tools = await runtime.list_tools([args.server])
+        discovered = _find_discovered_tool(tools.get(args.server, []), args.tool)
+        if discovered is None:
+            raise SystemExit(f"Error: tool '{args.server}.{args.tool}' was not discovered or is not allowed")
+        validate_arguments(discovered.input_schema, arguments)
+        result = await runtime.call_tool(
+            ToolCall(server=args.server, tool=args.tool, arguments=arguments)
+        )
+        if args.json:
+            print(json.dumps(result.to_dict(), indent=2, ensure_ascii=False, sort_keys=True))
+        else:
+            print(format_tool_result(result))
+        if not result.ok:
+            raise SystemExit(1)
+    elif args.mcp_command == "doctor":
+        ok = await _run_mcp_doctor(runtime)
+        if not ok:
+            raise SystemExit(1)
+
+
+def _parse_json_object(raw: str, label: str) -> dict:
+    try:
+        value = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise SystemExit(f"Error: {label} must be valid JSON: {exc}") from exc
+    if not isinstance(value, dict):
+        raise SystemExit(f"Error: {label} must be a JSON object")
+    return value
+
+
+def _find_discovered_tool(tools: list[DiscoveredTool], name: str) -> DiscoveredTool | None:
+    for tool in tools:
+        if tool.name == name:
+            return tool
+    return None
+
+
+async def _run_mcp_doctor(runtime: MCPRuntime) -> bool:
+    print(f"MCP SDK: {'installed' if mcp_sdk_available() else 'missing'}")
+    if not mcp_sdk_available():
+        print("Install with: pip install -e '.[mcp]'")
+        return False
+    if not runtime.servers:
+        print("Configured servers: none")
+        return True
+
+    ok = True
+    print("Configured servers:")
+    for name, server in sorted(runtime.servers.items()):
+        allowed = ", ".join(server.allowed_tools) if server.allowed_tools else "all tools"
+        print(f"  - {name}: {server.command} {' '.join(server.args)}")
+        print(f"    allowed: {allowed}")
+        try:
+            tools = await runtime.list_server_tools(name)
+        except MCPRuntimeError as exc:
+            ok = False
+            print(f"    status: error - {exc}")
+            continue
+        names = ", ".join(tool.name for tool in tools) if tools else "none"
+        print("    status: ok")
+        print(f"    discovered: {names}")
+    return ok
 
 
 def _resolve_task_args(args):

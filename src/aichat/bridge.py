@@ -5,8 +5,9 @@ Bridge — the relay engine that lets AI models talk to each other.
 from __future__ import annotations
 
 import asyncio
+import inspect
 import logging
-from typing import List, Optional, Dict
+from typing import Awaitable, Callable, List, Optional, Dict
 
 from .adapters.generic import get_adapter, BaseAdapter, Message
 from .config import AgentSpec, MCPServerSpec, agents_from_participants
@@ -20,6 +21,7 @@ from .mcp_runtime import (
     parse_tool_call,
     validate_arguments,
 )
+from .relay import RelayDecision, RelayParseError, RelayRequest, parse_relay_request, relay_context
 from .transcript import Transcript
 
 logger = logging.getLogger(__name__)
@@ -53,6 +55,10 @@ class Bridge:
         discover_mcp_tools: bool = False,
         enable_tool_calls: bool = False,
         max_tool_calls_per_turn: int = 3,
+        human_relay: bool = False,
+        relay_approver: Optional[
+            Callable[[str, RelayRequest], RelayDecision | Awaitable[RelayDecision]]
+        ] = None,
     ):
         self.task = task
         self.starter = starter
@@ -68,6 +74,8 @@ class Bridge:
         self.discover_mcp_tools = discover_mcp_tools
         self.enable_tool_calls = enable_tool_calls
         self.max_tool_calls_per_turn = max_tool_calls_per_turn
+        self.human_relay = human_relay
+        self.relay_approver = relay_approver
         self._mcp_tools: Dict[str, List[DiscoveredTool]] = {}
 
         if self.starter not in self.participants:
@@ -158,6 +166,7 @@ class Bridge:
         ]
         response = await self._call_with_retry(adapter, messages, self.starter)
         response = await self._resolve_tool_calls(adapter, messages, self.starter, response)
+        response = await self._resolve_relay_request(adapter, messages, self.starter, response)
         self._transcript.add(self.starter, response.content)
 
     async def _participant_turn(self, speaker: str) -> None:
@@ -191,6 +200,12 @@ class Bridge:
             elif entry.kind == "tool_call":
                 role = "assistant" if entry.model == speaker else "user"
                 content = self._format_tool_call_for_model(entry.model, entry.metadata)
+            elif entry.kind == "relay_request":
+                role = "user"
+                content = self._format_relay_request_for_model(entry.model, entry.metadata)
+            elif entry.kind == "relay_decision":
+                role = "user"
+                content = self._format_relay_decision_for_model(entry.metadata, entry.content)
             elif entry.model == speaker:
                 role = "assistant"
                 content = entry.content
@@ -208,6 +223,7 @@ class Bridge:
 
         response = await self._call_with_retry(adapter, messages, speaker)
         response = await self._resolve_tool_calls(adapter, messages, speaker, response)
+        response = await self._resolve_relay_request(adapter, messages, speaker, response)
         self._transcript.add(speaker, response.content)
 
     # ------------------------------------------------------------------
@@ -327,6 +343,89 @@ class Bridge:
 
         return response
 
+    async def _resolve_relay_request(
+        self,
+        adapter: BaseAdapter,
+        messages: List[Message],
+        speaker: str,
+        response,
+    ):
+        if not self.human_relay:
+            return response
+
+        try:
+            relay_request = parse_relay_request(response.content)
+        except RelayParseError as exc:
+            self._transcript.add_relay_decision(
+                model="human",
+                source=speaker,
+                target="unknown",
+                action="reject",
+                note=str(exc),
+                approved=False,
+            )
+            response.content = f"[Relay rejected: {exc}]"
+            return response
+
+        if relay_request is None:
+            return response
+
+        self._transcript.add_relay_request(
+            speaker,
+            relay_request.target,
+            relay_request.message,
+            relay_request.reason,
+        )
+        decision = await self._approve_relay(speaker, relay_request)
+        self._transcript.add_relay_decision(
+            model="human",
+            source=speaker,
+            target=relay_request.target,
+            action=decision.action,
+            message=decision.message,
+            note=decision.note,
+            approved=decision.approved,
+        )
+
+        if decision.action == "clarify":
+            messages.extend(
+                [
+                    Message(role="assistant", content=response.content),
+                    Message(
+                        role="user",
+                        content=(
+                            "Human requested clarification before approving the relay:\n"
+                            f"{decision.message or decision.note}"
+                        ),
+                    ),
+                ]
+            )
+            return await self._call_with_retry(adapter, messages, speaker)
+
+        if decision.approved:
+            response.content = (
+                f"[Relay approved to {relay_request.target}]\n\n"
+                f"{decision.message or relay_request.message}"
+            )
+            return response
+
+        response.content = (
+            f"[Relay {decision.action} for {relay_request.target}]"
+            + (f"\n\n{decision.note}" if decision.note else "")
+        )
+        return response
+
+    async def _approve_relay(self, speaker: str, relay_request: RelayRequest) -> RelayDecision:
+        if not self.relay_approver:
+            return RelayDecision(
+                action="reject",
+                note="No human relay approver is configured.",
+            )
+        decision = self.relay_approver(speaker, relay_request)
+        if inspect.isawaitable(decision):
+            decision = await decision
+        return decision
+
     async def _execute_tool_call(self, speaker: str, tool_call: ToolCall) -> ToolResult:
         try:
             agent = self._agent_by_name[speaker]
@@ -398,10 +497,12 @@ class Bridge:
         return "\n".join(lines)
 
     def _agent_tool_context(self, agent: AgentSpec) -> str:
+        relay_note = f"\n\n{relay_context()}" if self.human_relay else ""
         if not agent.mcp_servers:
             return (
                 "Assigned MCP tools: none. You can still collaborate through reasoning, "
                 "questions, and review."
+                f"{relay_note}"
             )
 
         lines = [
@@ -434,7 +535,7 @@ class Bridge:
                 tools = "all server tools"
             description = f" {server.description}" if server.description else ""
             lines.append(f"- {server.name}: {tools}.{description}")
-        return "\n".join(lines)
+        return "\n".join(lines) + relay_note
 
     def _tool_result_message(self, result: ToolResult) -> str:
         return (
@@ -456,6 +557,22 @@ class Bridge:
         tool = metadata.get("tool", "")
         arguments = metadata.get("arguments", {})
         return f"{model} requested tool {server}.{tool} with arguments: {arguments}"
+
+    def _format_relay_request_for_model(self, model: str, metadata: Dict) -> str:
+        target = metadata.get("target", "")
+        message = metadata.get("message", "")
+        reason = metadata.get("reason", "")
+        return f"{model} proposed relay to {target}: {message}\nReason: {reason}".strip()
+
+    def _format_relay_decision_for_model(self, metadata: Dict, content: str) -> str:
+        source = metadata.get("source", "")
+        target = metadata.get("target", "")
+        action = metadata.get("action", "")
+        approved = metadata.get("approved", False)
+        return (
+            f"Human relay decision for {source} -> {target}: {action} "
+            f"(approved={approved})\n{content}"
+        ).strip()
 
     def _participant_metadata(self) -> Dict[str, str]:
         metadata = {}

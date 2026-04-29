@@ -72,6 +72,51 @@ class Transcript:
             )
         )
 
+    def add_relay_request(
+        self,
+        model: str,
+        target: str,
+        message: str,
+        reason: str = "",
+    ) -> None:
+        """Append a proposed human-supervised relay message."""
+        self.entries.append(
+            Entry(
+                model=model,
+                content=message,
+                kind="relay_request",
+                metadata={"target": target, "message": message, "reason": reason},
+            )
+        )
+
+    def add_relay_decision(
+        self,
+        model: str,
+        source: str,
+        target: str,
+        action: str,
+        message: str = "",
+        note: str = "",
+        approved: bool = False,
+    ) -> None:
+        """Append the human decision for a relay request."""
+        metadata: Dict[str, Any] = {
+            "source": source,
+            "target": target,
+            "action": action,
+            "approved": approved,
+        }
+        if note:
+            metadata["note"] = note
+        self.entries.append(
+            Entry(
+                model=model,
+                content=message or note or action,
+                kind="relay_decision",
+                metadata=metadata,
+            )
+        )
+
     @property
     def last_message(self) -> Entry | None:
         """Return the most recent message, or None if empty."""
@@ -116,6 +161,33 @@ class Transcript:
                 lines.append("")
                 lines.append(f"**Tool**: {server}.{tool}")
                 lines.append(f"**Status**: {status}")
+                lines.append("")
+                lines.append(entry.content)
+                lines.append("")
+                continue
+            if entry.kind == "relay_request":
+                target = entry.metadata.get("target", "")
+                reason = entry.metadata.get("reason", "")
+                lines.append(f"## Relay Request {i} ({entry.model} -> {target})")
+                lines.append("")
+                if reason:
+                    lines.append(f"**Reason**: {reason}")
+                    lines.append("")
+                lines.append(entry.content)
+                lines.append("")
+                continue
+            if entry.kind == "relay_decision":
+                source = entry.metadata.get("source", "")
+                target = entry.metadata.get("target", "")
+                action = entry.metadata.get("action", "")
+                approved = entry.metadata.get("approved", False)
+                lines.append(f"## Relay Decision {i} ({source} -> {target})")
+                lines.append("")
+                lines.append(f"**Action**: {action}")
+                lines.append(f"**Approved**: {approved}")
+                note = entry.metadata.get("note")
+                if note:
+                    lines.append(f"**Note**: {note}")
                 lines.append("")
                 lines.append(entry.content)
                 lines.append("")

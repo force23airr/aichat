@@ -130,6 +130,32 @@ The provider-neutral tool call format is:
 
 `--enable-tool-calls` implies MCP tool discovery. Use `--max-tool-calls-per-turn` to cap tool activity.
 
+## Human-Supervised Relay
+
+Use relay mode when one AI needs to draft a message for another AI assistant or external interface, but the human should approve before anything is sent.
+
+```bash
+aichat task \
+  "Help me prepare CAD instructions for the Fusion assistant" \
+  --starter claude \
+  --participants claude gpt \
+  --human-relay
+```
+
+When an agent needs a handoff, it can propose:
+
+```text
+<relay>{"to":"fusion_assistant","message":"Create a parametric 40mm bracket sketch with two M4 holes.","reason":"CAD assistant needs exact modeling instructions"}</relay>
+```
+
+The CLI pauses with approval options:
+
+```text
+[1] send as-is  [2] edit before sending  [3] ask for clarification  [4] reject
+```
+
+Every proposed relay and human decision is written into the transcript. This is the safe path for connecting a project-aware model to another assistant, CAD tool, MCP server, or human-operated workflow.
+
 ### Filesystem MCP Smoke Test
 
 This repo includes a tiny read-only filesystem MCP server for local testing. It only exposes files under the configured root.
@@ -144,6 +170,22 @@ List tools from the smoke server:
 
 ```bash
 aichat mcp list --config examples/mcp/filesystem-smoke.yaml
+```
+
+Check the configured MCP servers:
+
+```bash
+aichat mcp doctor --config examples/mcp/filesystem-smoke.yaml
+```
+
+Call a tool directly before handing it to an agent:
+
+```bash
+aichat mcp call \
+  --config examples/mcp/filesystem-smoke.yaml \
+  --server smoke_filesystem \
+  --tool read_file \
+  --arguments '{"path":"README.md"}'
 ```
 
 Run a tool-enabled session:

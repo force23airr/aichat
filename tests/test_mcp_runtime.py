@@ -6,6 +6,8 @@ from aichat.mcp_runtime import (
     MCPRuntime,
     MCPRuntimeError,
     ToolCallParseError,
+    ToolResult,
+    format_tool_result,
     parse_tool_call,
     format_discovered_tools,
     validate_arguments,
@@ -29,6 +31,33 @@ def test_format_discovered_tools():
     assert "filesystem:" in text
     assert "read_file - Read a file." in text
     assert '"type": "object"' in text
+
+
+def test_format_tool_result_includes_content_and_error():
+    ok_text = format_tool_result(
+        ToolResult(
+            server="filesystem",
+            tool="read_file",
+            arguments={"path": "README.md"},
+            ok=True,
+            content="hello",
+        )
+    )
+    error_text = format_tool_result(
+        ToolResult(
+            server="filesystem",
+            tool="read_file",
+            arguments={"path": "../secret"},
+            ok=False,
+            content="",
+            error="escapes configured root",
+        )
+    )
+
+    assert "filesystem.read_file: ok" in ok_text
+    assert "hello" in ok_text
+    assert "filesystem.read_file: error" in error_text
+    assert "escapes configured root" in error_text
 
 
 def test_runtime_rejects_unknown_server():
