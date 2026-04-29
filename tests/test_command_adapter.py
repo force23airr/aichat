@@ -45,3 +45,15 @@ def test_command_adapter_reports_nonzero_exit():
 
     with pytest.raises(RuntimeError, match="bad"):
         asyncio.run(adapter.chat([Message(role="user", content="fail")]))
+
+
+def test_command_adapter_reports_missing_executable():
+    adapter = CommandAdapter(
+        {
+            "command": "aichat-definitely-missing-command",
+            "args": [],
+        }
+    )
+
+    with pytest.raises(RuntimeError, match="executable not found"):
+        asyncio.run(adapter.chat([Message(role="user", content="fail")]))

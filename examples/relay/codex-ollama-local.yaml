@@ -1,0 +1,21 @@
+task: "Have local Codex CLI collaborate with a local Ollama model on a focused implementation plan."
+starter: local_gemma
+max_turns: 2
+
+agents:
+  - name: local_gemma
+    model: ollama:gemma4:e2b
+    provider: ollama
+    role: >
+      Local Ollama model. Keep the discussion concise and ask Codex for one
+      practical implementation step.
+
+  - name: codex_local
+    model: command:codex
+    provider: command
+    command: codex
+    args: ["exec", "-"]
+    timeout: 300
+    role: >
+      Local Codex CLI agent. Use the repository context and respond with a
+      concrete, testable plan.

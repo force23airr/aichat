@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import shutil
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -29,6 +30,13 @@ PROVIDER_ENV_VARS = {
 @dataclass(frozen=True)
 class ProviderStatus:
     provider: str
+    configured: bool
+    detail: str
+
+
+@dataclass(frozen=True)
+class CommandStatus:
+    agent: str
     configured: bool
     detail: str
 
@@ -112,6 +120,27 @@ def providers_for_agents(agents) -> list[str]:
         if provider not in providers:
             providers.append(provider)
     return providers
+
+
+def command_status_for_agent(agent) -> CommandStatus | None:
+    if getattr(agent, "provider_alias", None) != "command" and not getattr(agent, "command", None):
+        return None
+    command = getattr(agent, "command", None)
+    if not command:
+        return CommandStatus(agent=agent.name, configured=False, detail="missing command")
+    resolved = shutil.which(command)
+    if not resolved:
+        return CommandStatus(agent=agent.name, configured=False, detail=f"'{command}' not found on PATH")
+    return CommandStatus(agent=agent.name, configured=True, detail=resolved)
+
+
+def command_statuses_for_agents(agents) -> list[CommandStatus]:
+    statuses = []
+    for agent in agents:
+        status = command_status_for_agent(agent)
+        if status:
+            statuses.append(status)
+    return statuses
 
 
 def update_provider_config(provider: str, env_var: str) -> Path:

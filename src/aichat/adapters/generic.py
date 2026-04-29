@@ -8,6 +8,7 @@ from __future__ import annotations
 import asyncio
 import os
 import logging
+import shutil
 from dataclasses import dataclass
 from typing import Optional, List, Dict, Any, ClassVar
 
@@ -223,6 +224,8 @@ class CommandAdapter(BaseAdapter):
         command = self.config.get("command")
         if not command:
             raise ValueError("Command adapter requires a 'command' value")
+        if not shutil.which(command):
+            raise RuntimeError(f"Command agent executable not found on PATH: {command}")
         args = self.config.get("args", [])
         if not isinstance(args, list) or not all(isinstance(arg, str) for arg in args):
             raise ValueError("Command adapter 'args' must be a list of strings")
@@ -231,6 +234,8 @@ class CommandAdapter(BaseAdapter):
         rendered_args = [arg.replace("{prompt}", prompt) for arg in args]
         prompt_in_args = any("{prompt}" in arg for arg in args)
         timeout = int(self.config.get("timeout", 120))
+        if timeout <= 0:
+            raise ValueError("Command adapter 'timeout' must be positive")
         env = os.environ.copy()
         configured_env = self.config.get("env", {})
         if isinstance(configured_env, dict):

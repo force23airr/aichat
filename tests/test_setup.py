@@ -1,7 +1,14 @@
 import os
+import sys
 
 from aichat.config import AgentSpec
-from aichat.setup import load_dotenv, provider_status, providers_for_agents
+from aichat.setup import (
+    command_status_for_agent,
+    command_statuses_for_agents,
+    load_dotenv,
+    provider_status,
+    providers_for_agents,
+)
 
 
 def test_load_dotenv_sets_missing_values_without_overriding(tmp_path, monkeypatch):
@@ -37,3 +44,44 @@ def test_providers_for_agents_uses_provider_aliases():
     )
 
     assert providers == ["ollama", "gpt", "openai"]
+
+
+def test_command_status_for_agent_checks_path():
+    status = command_status_for_agent(
+        AgentSpec(
+            name="local_cli",
+            model="command:python",
+            provider="command",
+            command=sys.executable,
+        )
+    )
+
+    assert status is not None
+    assert status.configured is True
+    assert status.detail
+
+
+def test_command_status_for_agent_reports_missing_command():
+    status = command_status_for_agent(
+        AgentSpec(
+            name="missing_cli",
+            model="command:missing",
+            provider="command",
+            command="aichat-definitely-missing-command",
+        )
+    )
+
+    assert status is not None
+    assert status.configured is False
+    assert "not found on PATH" in status.detail
+
+
+def test_command_statuses_ignores_regular_agents():
+    statuses = command_statuses_for_agents(
+        [
+            AgentSpec(name="designer", model="ollama:gemma4:e2b", provider="ollama"),
+            AgentSpec(name="local_cli", model="command:python", provider="command", command=sys.executable),
+        ]
+    )
+
+    assert [status.agent for status in statuses] == ["local_cli"]

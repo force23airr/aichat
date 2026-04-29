@@ -33,6 +33,7 @@ from .relay import RelayDecision, RelayRequest
 from .setup import (
     CONFIG_PATH,
     PROVIDER_ENV_VARS,
+    command_statuses_for_agents,
     load_dotenv,
     provider_status,
     providers_for_agents,
@@ -398,9 +399,11 @@ def run_setup(args) -> None:
 def run_doctor(args) -> None:
     load_dotenv()
     providers = ["claude", "gpt", "ollama"]
+    command_statuses = []
     if args.config:
         config = load_session_config(args.config)
         providers = providers_for_agents(config.agents)
+        command_statuses = command_statuses_for_agents(config.agents)
     ok = True
     print("aichat provider setup:")
     for provider in providers:
@@ -408,8 +411,14 @@ def run_doctor(args) -> None:
         marker = "ok" if status.configured else "missing"
         print(f"  - {provider}: {marker} ({status.detail})")
         ok = ok and status.configured
+    if command_statuses:
+        print("command-backed agents:")
+        for status in command_statuses:
+            marker = "ok" if status.configured else "missing"
+            print(f"  - {status.agent}: {marker} ({status.detail})")
+            ok = ok and status.configured
     if not ok:
-        print("Run `aichat setup` or add keys to .env.")
+        print("Fix missing provider keys with `aichat setup` or .env, and install any missing local commands.")
         raise SystemExit(1)
 
 
@@ -445,6 +454,9 @@ def _warn_missing_providers(agents) -> None:
         status = provider_status(provider)
         if not status.configured:
             missing.append(f"{provider} ({status.detail})")
+    for status in command_statuses_for_agents(agents):
+        if not status.configured:
+            missing.append(f"{status.agent} command ({status.detail})")
     if missing:
         print(
             "Provider setup warning: "

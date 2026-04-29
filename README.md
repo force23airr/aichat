@@ -212,6 +212,25 @@ Try the built-in demo that uses Python as the local command:
 aichat task --config examples/relay/local-command.yaml
 ```
 
+Check local command agents before running them:
+
+```bash
+aichat doctor --config examples/relay/codex-claude-local.yaml
+```
+
+Connect local Codex CLI and local Claude Code:
+
+```bash
+aichat task --config examples/relay/codex-claude-local.yaml
+```
+
+Connect local Ollama and local Codex CLI:
+
+```bash
+ollama run gemma4:e2b "Say ready."
+aichat task --config examples/relay/codex-ollama-local.yaml
+```
+
 This is the non-copy/paste bridge for local tools. Fully live terminal attachment depends on whether the target app exposes a stable CLI, API, MCP server, or stdio mode.
 
 ### Filesystem MCP Smoke Test
