@@ -1,0 +1,26 @@
+task: "Have local Codex CLI and local Claude Code review the next implementation step for this repo."
+starter: codex_local
+max_turns: 2
+
+agents:
+  - name: codex_local
+    model: command:codex
+    provider: command
+    command: codex
+    args: ["exec", "-"]
+    cwd: .
+    timeout: 300
+    role: >
+      Local Codex CLI agent. Inspect the repository context provided by aichat
+      and propose a small, testable implementation step.
+
+  - name: claude_code_local
+    model: command:claude
+    provider: command
+    command: claude
+    args: ["-p"]
+    cwd: .
+    timeout: 300
+    role: >
+      Local Claude Code agent. Review Codex's proposal, point out risks, and
+      suggest a safer or clearer implementation path.

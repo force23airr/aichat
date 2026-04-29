@@ -39,6 +39,7 @@ from .setup import (
     providers_for_agents,
     update_provider_config,
 )
+from .templates import TemplateError, default_output_path, list_templates, write_template
 from epistemic_classifier import DEFAULT_MODEL, classify_transcript
 
 # Color helpers (no dependencies)
@@ -54,6 +55,30 @@ def main():
         description="Multi-model AI collaboration from your terminal.",
     )
     sub = parser.add_subparsers(dest="command", required=True)
+
+    init_parser = sub.add_parser("init", help="Create a ready-to-run agent config from a template")
+    init_parser.add_argument(
+        "template",
+        nargs="?",
+        choices=list_templates(),
+        help="Template to create",
+    )
+    init_parser.add_argument(
+        "--output",
+        "-o",
+        default=None,
+        help="Output config path (default: aichat.<template>.yaml)",
+    )
+    init_parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Overwrite the output file if it already exists",
+    )
+    init_parser.add_argument(
+        "--list",
+        action="store_true",
+        help="List available templates",
+    )
 
     setup_parser = sub.add_parser("setup", help="Configure provider keys and local models")
     setup_parser.add_argument(
@@ -172,6 +197,8 @@ def main():
 
     if args.command == "task":
         asyncio.run(run_task(args))
+    elif args.command == "init":
+        run_init(args)
     elif args.command == "setup":
         run_setup(args)
     elif args.command == "doctor":
@@ -221,6 +248,30 @@ async def run_task(args):
         print(f"Transcript saved to {outpath}")
     else:
         print(f"Session ended. {len(bridge.transcript.entries)} messages exchanged.")
+
+
+def run_init(args) -> None:
+    if args.list:
+        print("Available templates:")
+        for name in list_templates():
+            print(f"  - {name}")
+        return
+    if not args.template:
+        print("Error: provide a template name or use `aichat init --list`.", file=sys.stderr)
+        raise SystemExit(2)
+    try:
+        output_path = write_template(args.template, args.output, force=args.force)
+    except TemplateError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        raise SystemExit(1) from exc
+    print(f"Created {output_path}")
+    print("")
+    print("Next:")
+    print(f"  aichat doctor --config {output_path}")
+    print(f"  aichat task --config {output_path}")
+    if args.template == "fusion-mcp":
+        print("")
+        print("Edit the fusion MCP server command/args before running if your server name differs.")
 
 
 async def _approve_relay_cli(speaker: str, request: RelayRequest) -> RelayDecision:

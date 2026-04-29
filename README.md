@@ -29,6 +29,28 @@ Let your AI models collaborate from the terminal.
 
 For Docker, pass the same keys with `--env-file .env`.
 
+## Quick Start Templates
+
+Create a ready-to-run config instead of writing YAML by hand:
+
+```bash
+aichat init --list
+aichat init codex-claude
+```
+
+Then run:
+
+```bash
+aichat doctor --config aichat.codex-claude.yaml
+aichat task --config aichat.codex-claude.yaml
+```
+
+Available templates:
+
+- `codex-claude`: local Codex CLI plus local Claude Code
+- `ollama-codex`: local Ollama model plus local Codex CLI
+- `fusion-mcp`: Fusion-oriented MCP starter config with placeholders
+
 ## Usage
 
 ```bash

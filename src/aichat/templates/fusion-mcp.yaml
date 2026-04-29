@@ -1,0 +1,26 @@
+task: "Prepare precise CAD instructions for a Fusion assistant and inspect available project context."
+starter: product_designer
+max_turns: 4
+
+mcp_servers:
+  fusion:
+    command: "fusion-mcp-server"
+    args: []
+    description: "Placeholder Fusion MCP server. Replace command/args with your installed Fusion MCP server."
+    allowed_tools: []
+
+agents:
+  - name: product_designer
+    model: claude
+    role: >
+      Understand the user's product intent and draft concise, safe CAD
+      instructions for the Fusion assistant. Ask clarifying questions when
+      requirements are incomplete.
+
+  - name: fusion_operator
+    model: claude
+    role: >
+      Translate product intent into Fusion/CAD operations. Use only assigned
+      MCP tools and keep the human in the loop for design-changing actions.
+    mcp_servers:
+      - fusion

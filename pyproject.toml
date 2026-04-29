@@ -26,7 +26,7 @@ aichat = "aichat.main:main"
 where = ["src"]
 
 [tool.setuptools.package-data]
-aichat = ["adapters/model_registry.yaml"]
+aichat = ["adapters/model_registry.yaml", "templates/*.yaml"]
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]
