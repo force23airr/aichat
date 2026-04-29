@@ -1,0 +1,26 @@
+task: "Have local Codex CLI and local Claude Code continue reviewing the next implementation step for this repo."
+starter: codex_local
+max_turns: 2
+
+agents:
+  - name: codex_local
+    model: command:codex
+    provider: command
+    command: codex
+    args: ["exec", "resume", "--last"]
+    cwd: .
+    timeout: 300
+    role: >
+      Local Codex CLI agent in resume mode. Continue the most recent local
+      session for this repo and propose a small, testable implementation step.
+
+  - name: claude_code_local
+    model: command:claude
+    provider: command
+    command: claude
+    args: ["-c", "-p"]
+    cwd: .
+    timeout: 300
+    role: >
+      Local Claude Code agent in resume mode. Continue the most recent local
+      session, review Codex's proposal, and suggest a safer or clearer path.

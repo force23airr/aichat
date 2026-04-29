@@ -35,7 +35,8 @@ Create a ready-to-run config instead of writing YAML by hand:
 
 ```bash
 aichat init --list
-aichat init codex-claude
+aichat init codex-claude --fresh
+aichat init codex-claude --resume
 ```
 
 Then run:
@@ -60,6 +61,8 @@ Example outcomes:
 - Start from a Fusion MCP config when preparing CAD assistant workflows.
 
 The goal is to move users from "how do I configure this?" to "which agents do I want working together?"
+
+For the local CLI templates, `--fresh` starts a new local assistant session each run, while `--resume` continues the most recent local session when the underlying CLI supports it.
 
 ## Usage
 

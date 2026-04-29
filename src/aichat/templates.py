@@ -4,7 +4,18 @@ from importlib import resources
 from pathlib import Path
 
 
-TEMPLATE_NAMES = ("codex-claude", "ollama-codex", "fusion-mcp")
+TEMPLATE_NAMES = (
+    "codex-claude-fresh",
+    "codex-claude-resume",
+    "ollama-codex-fresh",
+    "ollama-codex-resume",
+    "fusion-mcp",
+)
+
+TEMPLATE_ALIASES = {
+    "codex-claude": "codex-claude-fresh",
+    "ollama-codex": "ollama-codex-fresh",
+}
 
 
 class TemplateError(ValueError):
@@ -21,6 +32,7 @@ def default_output_path(template_name: str) -> Path:
 
 
 def render_template(template_name: str) -> str:
+    template_name = _resolve_template_name(template_name)
     _validate_template_name(template_name)
     template_file = resources.files("aichat").joinpath("templates", f"{template_name}.yaml")
     return template_file.read_text(encoding="utf-8")
@@ -32,6 +44,8 @@ def write_template(
     *,
     force: bool = False,
 ) -> Path:
+    template_name = _resolve_template_name(template_name)
+    _validate_template_name(template_name)
     target = Path(output_path) if output_path else default_output_path(template_name)
     target = target.expanduser()
     if target.exists() and not force:
@@ -45,3 +59,7 @@ def _validate_template_name(template_name: str) -> None:
         raise TemplateError(
             f"Unknown template '{template_name}'. Available templates: {', '.join(TEMPLATE_NAMES)}"
         )
+
+
+def _resolve_template_name(template_name: str) -> str:
+    return TEMPLATE_ALIASES.get(template_name, template_name)

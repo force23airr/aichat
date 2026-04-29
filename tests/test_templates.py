@@ -16,6 +16,11 @@ def test_all_templates_render_and_load(tmp_path):
         assert config.task
 
 
+def test_template_aliases_render_fresh_versions():
+    assert "args: [\"exec\", \"-\"]" in render_template("codex-claude")
+    assert "args: [\"exec\", \"-\"]" in render_template("ollama-codex")
+
+
 def test_write_template_refuses_overwrite(tmp_path):
     path = tmp_path / "aichat.codex-claude.yaml"
     write_template("codex-claude", path)

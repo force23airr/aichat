@@ -60,8 +60,17 @@ def main():
     init_parser.add_argument(
         "template",
         nargs="?",
-        choices=list_templates(),
         help="Template to create",
+    )
+    init_parser.add_argument(
+        "--fresh",
+        action="store_true",
+        help="Choose the fresh variant when a template has resume/fresh options",
+    )
+    init_parser.add_argument(
+        "--resume",
+        action="store_true",
+        help="Choose the resume variant when a template has fresh/resume options",
     )
     init_parser.add_argument(
         "--output",
@@ -259,8 +268,9 @@ def run_init(args) -> None:
     if not args.template:
         print("Error: provide a template name or use `aichat init --list`.", file=sys.stderr)
         raise SystemExit(2)
+    template_name = _resolve_template_choice(args.template, args)
     try:
-        output_path = write_template(args.template, args.output, force=args.force)
+        output_path = write_template(template_name, args.output, force=args.force)
     except TemplateError as exc:
         print(f"Error: {exc}", file=sys.stderr)
         raise SystemExit(1) from exc
@@ -269,9 +279,23 @@ def run_init(args) -> None:
     print("Next:")
     print(f"  aichat doctor --config {output_path}")
     print(f"  aichat task --config {output_path}")
-    if args.template == "fusion-mcp":
+    if template_name == "fusion-mcp":
         print("")
         print("Edit the fusion MCP server command/args before running if your server name differs.")
+
+
+def _resolve_template_choice(template: str, args) -> str:
+    if template in ("codex-claude", "ollama-codex"):
+        if args.resume and args.fresh:
+            raise SystemExit("Error: choose only one of --fresh or --resume")
+        if args.resume:
+            return f"{template}-resume"
+        return f"{template}-fresh"
+    if template in list_templates():
+        return template
+    raise SystemExit(
+        f"Error: unknown template '{template}'. Available templates: {', '.join(list_templates())}"
+    )
 
 
 async def _approve_relay_cli(speaker: str, request: RelayRequest) -> RelayDecision:

@@ -1,0 +1,22 @@
+task: "Have local Ollama and local Codex CLI continue a focused implementation plan."
+starter: local_model
+max_turns: 2
+
+agents:
+  - name: local_model
+    model: ollama:gemma4:e2b
+    provider: ollama
+    role: >
+      Local Ollama model. Keep the discussion concise and ask Codex for one
+      practical implementation step.
+
+  - name: codex_local
+    model: command:codex
+    provider: command
+    command: codex
+    args: ["exec", "resume", "--last"]
+    cwd: .
+    timeout: 300
+    role: >
+      Local Codex CLI agent in resume mode. Continue the most recent local
+      session and respond with a concrete, testable plan.
