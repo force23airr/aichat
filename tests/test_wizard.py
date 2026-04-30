@@ -224,7 +224,13 @@ def test_doctor_preflight_returns_issues_for_unconfigured_provider(monkeypatch, 
     assert "provider gpt" in labels
 
 
-def test_doctor_preflight_clean_for_ollama(tmp_path):
+def test_doctor_preflight_clean_for_ollama_when_daemon_has_models(tmp_path, monkeypatch):
+    from aichat.setup import OllamaProbe
+
+    monkeypatch.setattr(
+        "aichat.setup.discover_ollama",
+        lambda *_, **__: OllamaProbe(reachable=True, models=("gemma4:e2b",), detail="1 model(s) available"),
+    )
     answers = WizardAnswers(
         task="x",
         agents=[_api_answer("planner", "ollama")],
@@ -234,8 +240,27 @@ def test_doctor_preflight_clean_for_ollama(tmp_path):
     )
     config = build_session_config(answers)
 
-    # ollama is treated as configured by provider_status (assumes daemon)
     assert doctor_preflight(config) == []
+
+
+def test_doctor_preflight_flags_ollama_when_daemon_down(tmp_path, monkeypatch):
+    from aichat.setup import OllamaProbe
+
+    monkeypatch.setattr(
+        "aichat.setup.discover_ollama",
+        lambda *_, **__: OllamaProbe(reachable=False, models=(), detail="connection refused"),
+    )
+    answers = WizardAnswers(
+        task="x",
+        agents=[_api_answer("planner", "ollama")],
+        starter="planner",
+        max_turns=2,
+        output_path=tmp_path / "x.yaml",
+    )
+    config = build_session_config(answers)
+    issues = doctor_preflight(config)
+
+    assert any("provider ollama" in issue.label for issue in issues)
 
 
 def test_print_doctor_preflight_returns_status(capsys):

@@ -1,10 +1,15 @@
 import os
 import sys
 
+import httpx
+import pytest
+
 from aichat.config import AgentSpec
 from aichat.setup import (
+    OllamaProbe,
     command_status_for_agent,
     command_statuses_for_agents,
+    discover_ollama,
     load_dotenv,
     provider_status,
     providers_for_agents,
@@ -27,11 +32,86 @@ def test_load_dotenv_sets_missing_values_without_overriding(tmp_path, monkeypatc
     assert os.environ["OPENAI_API_KEY"] == "existing"
 
 
-def test_provider_status_handles_ollama_without_api_key():
+def test_provider_status_for_ollama_marks_configured_when_models_found(monkeypatch):
+    monkeypatch.setattr(
+        "aichat.setup.discover_ollama",
+        lambda *_, **__: OllamaProbe(reachable=True, models=("gemma3:e2b",), detail="1 model(s) available"),
+    )
+
     status = provider_status("ollama")
 
     assert status.configured is True
-    assert "local provider" in status.detail
+
+
+def test_provider_status_for_ollama_marks_unconfigured_when_unreachable(monkeypatch):
+    monkeypatch.setattr(
+        "aichat.setup.discover_ollama",
+        lambda *_, **__: OllamaProbe(reachable=False, models=(), detail="Ollama daemon not reachable"),
+    )
+
+    status = provider_status("ollama")
+
+    assert status.configured is False
+    assert "not reachable" in status.detail
+
+
+def test_provider_status_for_ollama_marks_unconfigured_with_no_models(monkeypatch):
+    monkeypatch.setattr(
+        "aichat.setup.discover_ollama",
+        lambda *_, **__: OllamaProbe(reachable=True, models=(), detail="no models pulled"),
+    )
+
+    status = provider_status("ollama")
+
+    assert status.configured is False
+
+
+def test_discover_ollama_returns_models_on_success(monkeypatch):
+    class FakeResponse:
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return {"models": [{"name": "gemma3:e2b"}, {"name": "llama3.1:8b"}]}
+
+    def fake_get(url, timeout=None):
+        return FakeResponse()
+
+    monkeypatch.setattr(httpx, "get", fake_get)
+
+    probe = discover_ollama()
+
+    assert probe.reachable is True
+    assert probe.models == ("gemma3:e2b", "llama3.1:8b")
+
+
+def test_discover_ollama_handles_connection_error(monkeypatch):
+    def fake_get(url, timeout=None):
+        raise httpx.ConnectError("connection refused")
+
+    monkeypatch.setattr(httpx, "get", fake_get)
+
+    probe = discover_ollama()
+
+    assert probe.reachable is False
+    assert "not reachable" in probe.detail
+
+
+def test_discover_ollama_handles_running_daemon_without_models(monkeypatch):
+    class FakeResponse:
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return {"models": []}
+
+    monkeypatch.setattr(httpx, "get", lambda *args, **kwargs: FakeResponse())
+
+    probe = discover_ollama()
+
+    assert probe.reachable is True
+    assert probe.models == ()
+    assert "no models" in probe.detail.lower()
 
 
 def test_providers_for_agents_uses_provider_aliases():

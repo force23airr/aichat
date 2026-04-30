@@ -26,6 +26,7 @@ from .config import AgentSpec, MCPServerSpec, SessionConfig
 from .setup import (
     PROVIDER_ENV_VARS,
     command_status_for_agent,
+    discover_ollama,
     load_dotenv,
     provider_status,
     upsert_local_env,
@@ -434,10 +435,7 @@ def _prompt_api_agent(questionary, *, index: int, used_names: set[str]) -> Agent
 
     model_variant: str | None = None
     if provider == "ollama":
-        model_variant = questionary.text(
-            "Ollama model to use (e.g. gemma3:e2b, llama3.1:8b):",
-            validate=lambda v: bool(v.strip()) or "Required — Ollama must be told which model to load.",
-        ).unsafe_ask().strip()
+        model_variant = _prompt_ollama_model(questionary)
 
     default_name = _suggest_agent_name(provider, used_names)
     name = _prompt_agent_name(questionary, default=default_name, used_names=used_names)
@@ -479,10 +477,13 @@ def _prompt_command_agent(questionary, *, index: int, used_names: set[str]) -> A
         default_role = str(preset["default_role"])
 
         if "model_prompt" in preset:
-            model_name = questionary.text(
-                str(preset["model_prompt"]),
-                validate=lambda v: bool(v.strip()) or "Required",
-            ).unsafe_ask().strip()
+            if command == "ollama":
+                model_name = _prompt_ollama_model(questionary)
+            else:
+                model_name = questionary.text(
+                    str(preset["model_prompt"]),
+                    validate=lambda v: bool(v.strip()) or "Required",
+                ).unsafe_ask().strip()
             args = _substitute_model_placeholder(args, model_name)
 
     if not shutil.which(command):
@@ -542,6 +543,39 @@ def _suggest_agent_name(stem: str, used_names: Iterable[str]) -> str:
         candidate = f"{base}_{counter}"
         counter += 1
     return candidate
+
+
+OLLAMA_TYPE_OTHER = "Type a different model name..."
+
+
+def _prompt_ollama_model(questionary) -> str:
+    """Pick or type an Ollama model. Auto-detects installed models when possible."""
+    probe = discover_ollama()
+
+    if probe.reachable and probe.models:
+        choices = list(probe.models) + [OLLAMA_TYPE_OTHER]
+        selection = questionary.select(
+            "Pick an Ollama model (detected from your daemon):",
+            choices=choices,
+            default=probe.models[0],
+        ).unsafe_ask()
+        if selection != OLLAMA_TYPE_OTHER:
+            return selection
+        return questionary.text(
+            "Ollama model name:",
+            validate=lambda v: bool(v.strip()) or "Required",
+        ).unsafe_ask().strip()
+
+    if probe.reachable:
+        print(f"Ollama is running but reports no installed models. {probe.detail}")
+    else:
+        print(f"Could not auto-detect Ollama models: {probe.detail}")
+        print("(You can still type a model name; just make sure the daemon is running before launch.)")
+
+    return questionary.text(
+        "Ollama model to use (e.g. gemma3:e2b, llama3.1:8b):",
+        validate=lambda v: bool(v.strip()) or "Required — Ollama must be told which model to load.",
+    ).unsafe_ask().strip()
 
 
 def _substitute_model_placeholder(args: list[str], model_name: str) -> list[str]:
