@@ -116,6 +116,10 @@ aichat init fusion-mcp                  # CAD/MCP starter
 
 ## What else aichat can do
 
+- **Two workflow shapes** — fully automated (aichat drives both agents)
+  or human-supervised relay (aichat drafts handoffs to your existing
+  Claude Code / Cursor / other tool, you approve every message). See
+  [docs/WORKFLOWS.md](docs/WORKFLOWS.md) to pick the right one.
 - **Permissioned MCP tool execution** with audit trail — see
   [docs/USAGE.md](docs/USAGE.md#mcp-tools).
 - **Local command-backed agents** for any CLI, with per-agent working
