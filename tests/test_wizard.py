@@ -249,6 +249,49 @@ def test_print_doctor_preflight_returns_status(capsys):
     assert "provider claude" in out
 
 
+def test_api_agent_with_model_variant_serializes_provider_colon_model(tmp_path):
+    """Picking ollama in the API path with a chosen model produces ollama:<name>."""
+    answers = WizardAnswers(
+        task="x",
+        agents=[
+            AgentAnswer(
+                name="ollama",
+                kind="api",
+                provider="ollama",
+                model_variant="gemma3:e2b",
+                role="Reviewer.",
+            ),
+        ],
+        starter="ollama",
+        max_turns=2,
+        output_path=tmp_path / "x.yaml",
+    )
+
+    config = build_session_config(answers)
+    yaml_text = serialize_session_yaml(config)
+    output_file = tmp_path / "x.yaml"
+    output_file.write_text(yaml_text, encoding="utf-8")
+    parsed = load_session_config(output_file)
+
+    assert parsed.agents[0].model == "ollama:gemma3:e2b"
+    assert parsed.agents[0].provider_alias == "ollama"
+    assert parsed.agents[0].model_name == "gemma3:e2b"
+
+
+def test_api_agent_without_model_variant_uses_provider_alone(tmp_path):
+    """API providers without a variant (claude, gpt) keep the bare alias."""
+    answers = WizardAnswers(
+        task="x",
+        agents=[_api_answer("planner", "claude")],
+        starter="planner",
+        max_turns=2,
+        output_path=tmp_path / "x.yaml",
+    )
+
+    config = build_session_config(answers)
+    assert config.agents[0].model == "claude"
+
+
 def test_ollama_preset_prompts_for_model_and_substitutes_placeholder():
     preset = KNOWN_CLI_AGENTS["ollama (as CLI)"]
 

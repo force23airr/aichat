@@ -93,6 +93,7 @@ class AgentAnswer:
 
     # API path
     provider: str | None = None
+    model_variant: str | None = None  # e.g. "gemma3:e2b" for ollama
 
     # Command path
     command: str | None = None
@@ -160,9 +161,14 @@ def _agent_answer_to_spec(answer: AgentAnswer) -> AgentSpec:
     if answer.kind == "api":
         if not answer.provider:
             raise WizardError(f"Agent '{answer.name}' is missing a provider")
+        model = (
+            f"{answer.provider}:{answer.model_variant.strip()}"
+            if answer.model_variant and answer.model_variant.strip()
+            else answer.provider
+        )
         return AgentSpec(
             name=answer.name,
-            model=answer.provider,
+            model=model,
             role=answer.role.strip(),
         )
 
@@ -426,6 +432,13 @@ def _prompt_api_agent(questionary, *, index: int, used_names: set[str]) -> Agent
                 load_dotenv()
                 print(f"Saved {env_var} to .env")
 
+    model_variant: str | None = None
+    if provider == "ollama":
+        model_variant = questionary.text(
+            "Ollama model to use (e.g. gemma3:e2b, llama3.1:8b):",
+            validate=lambda v: bool(v.strip()) or "Required — Ollama must be told which model to load.",
+        ).unsafe_ask().strip()
+
     default_name = _suggest_agent_name(provider, used_names)
     name = _prompt_agent_name(questionary, default=default_name, used_names=used_names)
     role = questionary.text(
@@ -438,6 +451,7 @@ def _prompt_api_agent(questionary, *, index: int, used_names: set[str]) -> Agent
         kind="api",
         role=role,
         provider=provider,
+        model_variant=model_variant,
     )
 
 
