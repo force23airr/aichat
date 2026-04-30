@@ -110,6 +110,18 @@ When adding an entry, follow the existing shape:
 - **Effort:** month+ per platform; requires hardware partner or use case.
 - **Status:** vision, downstream of federation.
 
+### Edge / military / operational hardware deployment
+- **What:** Hardened deployment of the aichat hub on edge hardware — vehicles, drones, field sensors, ruggedized servers — with federation across distributed systems so agents can reason and coordinate across all connected nodes. This is the same architectural shape as the iOS phone-tap demo, scaled to operational environments.
+- **Why:** The agent-coordination problem is one of the largest funded segments in defense and operational tech (Anduril, Shield AI, Palantir, Saronic). The architectural ideas in aichat — coordinator hubs, permissioned tool access, audit trail, federation — match what those buyers ask for.
+- **Architecture map:** Same as the existing hub model. Each hardware node runs a hub. Hubs federate via a hardened version of the federation protocol. Local sensors / cameras / actuators are exposed as tool surfaces (MCP-style or platform-native).
+- **Practical considerations** (read these before chasing this market):
+  1. **License.** aichat is MIT today, which permits any use including military. If you want to court that market, MIT is fine; if you want the opposite, switch to AGPL or an ethics-restricted license. **Decide deliberately.**
+  2. **Export controls.** Marketing software for defense use can put it under ITAR or EAR. File an EAR commodity classification before exporting. Federal law, real penalties.
+  3. **Hardening gap.** The current Python codebase assumes a trusted laptop and friendly network. Operational deployment needs encrypted authenticated federation, tamper-resistant identity, offline-tolerant operation, SWaP-constrained inference, and durable audit. Multi-year effort — likely a hardened Rust/C++ reimplementation rather than the Python hub. Use this codebase as the protocol seed, not the deployable artifact.
+  4. **Dual-use ethics.** The same architecture can power hospital triage coordination or autonomous targeting. Decide your line before someone asks you to cross it. Concretely: what features will you accept, sponsor, refuse, or refuse to support?
+- **Effort:** multi-year, would require a credible partner, a clear scope, and explicit decisions on the four points above.
+- **Status:** vision, parked. Do not pursue speculatively. Pursue only when (1) the developer-CLI has real traction, (2) the federation protocol is specified and battle-tested in non-adversarial environments, and (3) a credible partner shows up with a defined use case and willingness to fund the hardening work.
+
 ### Agent identity, signed tool calls, capability tokens
 - **What:** Each agent gets a stable identity (DID or public key). Tool calls are signed. Capability grants (which servers, which tools, which arguments) are issued as tokens with TTL.
 - **Why:** Required when sessions cross trust boundaries (federation, enterprise, cross-org). Today's permission model is good for single-user; not enough for multi-org.
