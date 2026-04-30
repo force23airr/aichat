@@ -133,6 +133,9 @@ multi-agent collaboration: a local coordinator that owns the audit trail,
 runs across vendors, and federates outward as the agent ecosystem matures.
 For the full positioning, see [docs/POSITIONING.md](docs/POSITIONING.md).
 
+Future directions and bookmarked ideas live in
+[docs/IDEAS.md](docs/IDEAS.md).
+
 ## License
 
 MIT — see [LICENSE](LICENSE).
