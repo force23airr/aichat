@@ -1,358 +1,121 @@
 # aichat
 
-Let your AI models collaborate from the terminal.
+**The local-first hub for AI models and tools.**
 
-## Setup
+aichat lets multiple AI models — Claude, Codex CLI, Ollama, GPT, and any
+MCP-compatible tool — collaborate on real work from a single coordinator
+that runs on your machine. Every message is logged. Every tool call is
+permissioned. No SaaS, no vendor lock-in, no API keys required for the
+local-only path.
 
-1. Install:
-   ```bash
-   pip install -e .
-   ```
+If you've wanted Codex and Claude to work on your codebase together, an
+Ollama planner to hand off to a Claude executor, or a swarm of agents that
+can use MCP tools under your supervision — that is what aichat is for.
 
-2. Configure providers:
-   ```bash
-   aichat setup
-   ```
+## Why aichat
 
-   You can also use a local `.env` file:
+- **Local-first.** Runs on your laptop. Your data does not leave your
+  machine unless you point it at a remote API.
+- **Multi-vendor.** Same hub talks to Anthropic, OpenAI, Ollama, local CLIs
+  (Codex, Claude Code), and MCP tool servers.
+- **Config-first.** Define an agent in YAML, not Python. One file, one
+  command, full session.
+- **Permissioned and auditable.** Per-agent server allowlists, per-server
+  tool allowlists, schema validation, and a full transcript of every
+  message and tool call.
+- **Human-in-the-loop ready.** Optional relay mode pauses for your
+  approval before any cross-model handoff.
 
-   ```bash
-   ANTHROPIC_API_KEY=sk-ant-...
-   OPENAI_API_KEY=sk-...
-   DEEPSEEK_API_KEY=sk-...
-   ```
-
-3. Check setup:
-   ```bash
-   aichat doctor
-   ```
-
-For Docker, pass the same keys with `--env-file .env`.
-
-## Quick Start Templates
-
-Create a ready-to-run config instead of writing YAML by hand:
+## Quick start: Codex + Claude on your codebase
 
 ```bash
-aichat init --list
+pip install -e .
 aichat init codex-claude --fresh
-aichat init codex-claude --resume
+aichat doctor --config aichat.codex-claude-fresh.yaml
+aichat task --config aichat.codex-claude-fresh.yaml
 ```
 
-Then run:
+Two local CLIs, one shared task, full transcript. Edit the YAML to point
+each agent at the project you want them to work on.
 
-```bash
-aichat doctor --config aichat.codex-claude.yaml
-aichat task --config aichat.codex-claude.yaml
-```
+## Quick start: 100% local with Ollama and the filesystem tool
 
-Available templates:
-
-- `codex-claude`: local Codex CLI plus local Claude Code
-- `ollama-codex`: local Ollama model plus local Codex CLI
-- `fusion-mcp`: Fusion-oriented MCP starter config with placeholders
-
-Templates make `aichat` usable without requiring every user to understand providers, command args, working directories, MCP server declarations, or YAML structure first. The user picks the agents they want to connect, runs `doctor` to verify the local machine is ready, then starts the collaboration.
-
-Example outcomes:
-
-- Connect Codex CLI and Claude Code so they can review implementation ideas together.
-- Connect an Ollama model like `gemma4:e2b` with Codex CLI for local/private collaboration.
-- Start from a Fusion MCP config when preparing CAD assistant workflows.
-
-The goal is to move users from "how do I configure this?" to "which agents do I want working together?"
-
-For the local CLI templates, `--fresh` starts a new local assistant session each run, while `--resume` continues the most recent local session when the underlying CLI supports it.
-
-## Usage
-
-```bash
-aichat task "Create a 3-point plan to cut cloud costs" --starter claude --participants claude gpt
-```
-
-See the conversation unfold in your terminal. Use Ctrl+C to stop early, or add `--max-turns 6` to limit exchanges. Save the transcript with `--output plan.md`.
-
-## Config-Driven Agents
-
-Define named agents with roles in YAML:
-
-```yaml
-task: "Design a launch plan for a university AI lab"
-starter: planner
-max_turns: 8
-
-mcp_servers:
-  filesystem:
-    command: "mcp-server-filesystem"
-    args: ["/workspace"]
-    description: "Read and inspect mounted workspace files."
-    allowed_tools:
-      - list_directory
-      - read_file
-
-agents:
-  - name: planner
-    model: claude
-    role: "Coordinate the collaboration and break the task into steps."
-
-  - name: critic
-    model: gpt
-    role: "Challenge weak assumptions and identify risks."
-
-  - name: quantum_explorer
-    model: ollama:llama3
-    provider: ollama
-    role: "Explore non-obvious alternatives and optimization angles."
-
-  - name: researcher
-    model: gpt
-    role: "Gather evidence using approved tools."
-    mcp_servers:
-      - filesystem
-```
-
-Run it:
-
-```bash
-aichat task --config config.example.yaml --output launch-plan.md
-```
-
-You can override the task from the command line:
-
-```bash
-aichat task "Review this trading research workflow" --config config.example.yaml
-```
-
-`mcp_servers` declares the tool surface assigned to each agent. In the current version, this is validated, included in the agent prompt, and written into transcript metadata. Actual MCP process execution is the next runtime layer.
-
-The mental model is:
-
-```text
-agent = model + role + allowed MCP tools + transcript context
-```
-
-The model is the reasoning engine, while MCP servers define what tools that agent may eventually use.
-
-Install MCP support when you want to inspect live MCP servers:
+No API keys. No cloud. Read-only filesystem access for the agent.
 
 ```bash
 pip install -e ".[mcp]"
-```
-
-List configured MCP tools:
-
-```bash
-aichat mcp list --config config.example.yaml
-```
-
-Run a task and include discovered tools in each assigned agent prompt:
-
-```bash
-aichat task --config config.example.yaml --discover-tools
-```
-
-Discovery is opt-in because stdio MCP servers execute local commands from config.
-
-Allow agents to execute assigned MCP tools during their turns:
-
-```bash
-aichat task --config config.example.yaml --enable-tool-calls
-```
-
-Tool execution is explicit and permissioned:
-
-```text
-model asks for a tool using <tool_call>{...}</tool_call>
-aichat checks the agent's assigned MCP servers and allowed tools
-aichat validates arguments against the discovered input schema when available
-aichat calls the MCP server
-aichat writes the tool call and result into the transcript
-aichat gives the result back to the same agent so it can continue
-```
-
-The provider-neutral tool call format is:
-
-```text
-<tool_call>{"server":"filesystem","tool":"read_file","arguments":{"path":"README.md"}}</tool_call>
-```
-
-`--enable-tool-calls` implies MCP tool discovery. Use `--max-tool-calls-per-turn` to cap tool activity.
-
-## Human-Supervised Relay
-
-Use relay mode when one AI needs to draft a message for another AI assistant or external interface, but the human should approve before anything is sent.
-
-```bash
-aichat task \
-  "Help me prepare CAD instructions for the Fusion assistant" \
-  --starter claude \
-  --participants claude gpt \
-  --human-relay
-```
-
-When an agent needs a handoff, it can propose:
-
-```text
-<relay>{"to":"fusion_assistant","message":"Create a parametric 40mm bracket sketch with two M4 holes.","reason":"CAD assistant needs exact modeling instructions"}</relay>
-```
-
-The CLI pauses with approval options:
-
-```text
-[1] send as-is  [2] edit before sending  [3] ask for clarification  [4] reject
-```
-
-Every proposed relay and human decision is written into the transcript. This is the safe path for connecting a project-aware model to another assistant, CAD tool, MCP server, or human-operated workflow.
-
-Use a local Ollama model for relay testing:
-
-```bash
 ollama run gemma4:e2b "Say ready."
-
-aichat task \
-  --config examples/relay/fusion-ollama.yaml \
-  --human-relay
-```
-
-## Local Command Agents
-
-Use a command-backed agent when you want `aichat` to talk to another local CLI program without copy/paste. The command receives the conversation prompt on stdin unless one of its args contains `{prompt}`.
-
-```yaml
-agents:
-  - name: local_code_assistant
-    model: command:codex
-    provider: command
-    command: codex
-    args: ["exec", "-"]
-    cwd: /path/to/project
-    timeout: 120
-    role: "A local command-line coding assistant."
-```
-
-`cwd` is optional. When it is relative, it resolves from the YAML config file's directory, so configs can be run from any shell location.
-
-For CLIs that take the prompt as an argument:
-
-```yaml
-agents:
-  - name: local_code_assistant
-    model: command:assistant
-    provider: command
-    command: assistant-cli
-    args: ["run", "{prompt}"]
-    timeout: 120
-```
-
-Try the built-in demo that uses Python as the local command:
-
-```bash
-aichat task --config examples/relay/local-command.yaml
-```
-
-Check local command agents before running them:
-
-```bash
-aichat doctor --config examples/relay/codex-claude-local.yaml
-```
-
-Connect local Codex CLI and local Claude Code:
-
-```bash
-aichat task --config examples/relay/codex-claude-local.yaml
-```
-
-Connect local Ollama and local Codex CLI:
-
-```bash
-ollama run gemma4:e2b "Say ready."
-aichat task --config examples/relay/codex-ollama-local.yaml
-```
-
-This is the non-copy/paste bridge for local tools. Fully live terminal attachment depends on whether the target app exposes a stable CLI, API, MCP server, or stdio mode.
-
-### Filesystem MCP Smoke Test
-
-This repo includes a tiny read-only filesystem MCP server for local testing. It only exposes files under the configured root.
-
-Install MCP support:
-
-```bash
-pip install -e ".[mcp]"
-```
-
-List tools from the smoke server:
-
-```bash
-aichat mcp list --config examples/mcp/filesystem-smoke.yaml
-```
-
-Check the configured MCP servers:
-
-```bash
-aichat mcp doctor --config examples/mcp/filesystem-smoke.yaml
-```
-
-Call a tool directly before handing it to an agent:
-
-```bash
-aichat mcp call \
-  --config examples/mcp/filesystem-smoke.yaml \
-  --server smoke_filesystem \
-  --tool read_file \
-  --arguments '{"path":"README.md"}'
-```
-
-Run a tool-enabled session:
-
-```bash
 aichat task --config examples/mcp/filesystem-smoke.yaml --enable-tool-calls
 ```
 
-Docker version:
+The agent inspects the bundled smoke-test workspace using a sandboxed,
+permissioned MCP server and summarizes what it finds. Every tool call is
+recorded.
+
+## Install
 
 ```bash
-docker build --build-arg EXTRAS=mcp -t aichat:mcp .
-
-docker run --rm \
-  --env-file .env \
-  -v "$PWD:/workspace" \
-  aichat:mcp \
-  task --config examples/mcp/filesystem-smoke.yaml --enable-tool-calls
+pip install -e .
 ```
 
-## Docker
-
-Build the image:
+Optional: MCP SDK for tool discovery and execution.
 
 ```bash
-docker build -t aichat .
+pip install -e ".[mcp]"
 ```
 
-Build with MCP SDK support:
+Configure providers (any subset is fine — only the ones you'll use):
 
 ```bash
-docker build --build-arg EXTRAS=mcp -t aichat:mcp .
+aichat setup
 ```
 
-Run a session with local files mounted:
+Or via `.env`:
 
 ```bash
-docker run --rm \
-  --env-file .env \
-  -v "$PWD:/workspace" \
-  aichat \
-  task --config config.example.yaml --output output/session.md
+ANTHROPIC_API_KEY=sk-ant-...
+OPENAI_API_KEY=sk-...
+DEEPSEEK_API_KEY=sk-...
 ```
 
-The container uses `/workspace` as its working directory, so mounted configs and transcripts behave like local files.
-
-## Classification
-
-Classify an existing transcript by epistemic type:
+Verify your environment:
 
 ```bash
-aichat classify haiku.md
+aichat doctor
 ```
 
-This writes `haiku.md.classified.jsonl` and prints a summary of factual assertions, opinions, predictions, recommendations, hypotheticals, questions, and meta-commentary.
+## Templates
+
+Skip writing YAML by hand:
+
+```bash
+aichat init --list
+aichat init codex-claude --fresh        # local Codex + local Claude Code
+aichat init codex-claude --resume       # continue an existing session
+aichat init ollama-codex --fresh        # local Ollama + local Codex
+aichat init fusion-mcp                  # CAD/MCP starter
+```
+
+## What else aichat can do
+
+- **Permissioned MCP tool execution** with audit trail — see
+  [docs/USAGE.md](docs/USAGE.md#mcp-tools).
+- **Local command-backed agents** for any CLI, with per-agent working
+  directories — see [docs/USAGE.md](docs/USAGE.md#local-command-agents).
+- **Human-supervised relay mode** for handing off between models you
+  approve — see [docs/USAGE.md](docs/USAGE.md#human-supervised-relay).
+- **Docker support** for reproducible runs — see
+  [docs/USAGE.md](docs/USAGE.md#docker).
+- **Transcript classification** by epistemic type — see
+  [docs/USAGE.md](docs/USAGE.md#classification).
+
+## Project direction
+
+aichat is positioned as the **household / team / company hub** for
+multi-agent collaboration: a local coordinator that owns the audit trail,
+runs across vendors, and federates outward as the agent ecosystem matures.
+For the full positioning, see [docs/POSITIONING.md](docs/POSITIONING.md).
+
+## License
+
+MIT — see [LICENSE](LICENSE).
