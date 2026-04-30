@@ -12,3 +12,9 @@ eval_results/*.json
 .env
 .env.*
 !.env.example
+
+# Private / internal documents — never commit
+BUSINESS.md
+NOTES.private.md
+*.private.md
+aichat.*.yaml
