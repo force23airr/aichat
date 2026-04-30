@@ -76,7 +76,8 @@ write. The technology itself is not the moat.
 What is defensible:
 
 - **Trust and audit reputation.** "aichat is the hub people use when they
-  care about safety." Earned, not bought, durable.
+  care about safety." Earned, not bought, durable. The exact trust
+  surface is documented in [TRUST_MODEL.md](TRUST_MODEL.md).
 - **UX polish.** The first hub that makes "Codex + Claude collaborating on
   my codebase" a one-click experience wins that mind share.
 - **Ecosystem of templates and first-party MCP servers.** Templates like

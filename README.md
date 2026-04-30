@@ -22,7 +22,8 @@ can use MCP tools under your supervision — that is what aichat is for.
   command, full session.
 - **Permissioned and auditable.** Per-agent server allowlists, per-server
   tool allowlists, schema validation, and a full transcript of every
-  message and tool call.
+  message and tool call. See [docs/TRUST_MODEL.md](docs/TRUST_MODEL.md)
+  for the exact list of files, processes, and network calls aichat makes.
 - **Human-in-the-loop ready.** Optional relay mode pauses for your
   approval before any cross-model handoff.
 
