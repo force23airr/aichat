@@ -18,6 +18,9 @@ dependencies = [
 mcp = [
     "mcp",
 ]
+wizard = [
+    "questionary>=2.0,<3",
+]
 
 [project.scripts]
 aichat = "aichat.main:main"

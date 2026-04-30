@@ -38,6 +38,7 @@ from .setup import (
     provider_status,
     providers_for_agents,
     update_provider_config,
+    upsert_local_env,
 )
 from .templates import TemplateError, default_output_path, list_templates, write_template
 from epistemic_classifier import DEFAULT_MODEL, classify_transcript
@@ -87,6 +88,24 @@ def main():
         "--list",
         action="store_true",
         help="List available templates",
+    )
+
+    new_parser = sub.add_parser("new", help="Interactively build a session config")
+    new_parser.add_argument(
+        "--output",
+        "-o",
+        default=None,
+        help="Output config path (default: aichat.session.yaml)",
+    )
+    new_parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Overwrite the output file if it already exists without confirming",
+    )
+    new_parser.add_argument(
+        "--no-run",
+        action="store_true",
+        help="Skip the post-preview run prompt and exit after writing the config",
     )
 
     setup_parser = sub.add_parser("setup", help="Configure provider keys and local models")
@@ -208,6 +227,8 @@ def main():
         asyncio.run(run_task(args))
     elif args.command == "init":
         run_init(args)
+    elif args.command == "new":
+        run_new(args)
     elif args.command == "setup":
         run_setup(args)
     elif args.command == "doctor":
@@ -282,6 +303,73 @@ def run_init(args) -> None:
     if template_name == "fusion-mcp":
         print("")
         print("Edit the fusion MCP server command/args before running if your server name differs.")
+
+
+def run_new(args) -> None:
+    try:
+        from .wizard import (
+            doctor_preflight,
+            print_doctor_preflight,
+            run_wizard,
+            WIZARD_INSTALL_HINT,
+        )
+    except ImportError as exc:
+        # Re-raised by run_wizard if questionary itself is missing; here we catch
+        # the case where wizard.py imports something else broken.
+        print(f"Error loading wizard: {exc}", file=sys.stderr)
+        raise SystemExit(1) from exc
+
+    output_default = Path(args.output) if args.output else None
+    try:
+        saved_path, config = run_wizard(output_default=output_default, force=args.force)
+    except ImportError as exc:
+        print(str(exc), file=sys.stderr)
+        raise SystemExit(1) from exc
+    except KeyboardInterrupt:
+        print("\nWizard cancelled. No file was written.")
+        raise SystemExit(130)
+
+    print(f"\nSaved {saved_path}")
+
+    issues = doctor_preflight(config)
+    ready = print_doctor_preflight(issues)
+
+    if args.no_run:
+        _print_next_steps(saved_path)
+        return
+
+    if not ready:
+        proceed = input("Run anyway? [y/N] ").strip().lower() in ("y", "yes")
+        if not proceed:
+            _print_next_steps(saved_path)
+            return
+    else:
+        proceed = input("Run this session now? [Y/n] ").strip().lower() not in ("n", "no")
+        if not proceed:
+            _print_next_steps(saved_path)
+            return
+
+    task_args = argparse.Namespace(
+        command="task",
+        config=str(saved_path),
+        goal=None,
+        starter=None,
+        participants=None,
+        max_turns=None,
+        output=None,
+        discover_tools=False,
+        enable_tool_calls=False,
+        max_tool_calls_per_turn=3,
+        human_relay=False,
+    )
+    asyncio.run(run_task(task_args))
+
+
+def _print_next_steps(saved_path: Path) -> None:
+    print()
+    print("Next:")
+    print(f"  aichat doctor --config {saved_path}")
+    print(f"  aichat task --config {saved_path}")
 
 
 def _resolve_template_choice(template: str, args) -> str:
@@ -461,7 +549,7 @@ def run_setup(args) -> None:
         key = getpass.getpass(f"{env_var}: ").strip()
         if key:
             os.environ[env_var] = key
-            _upsert_local_env(env_var, key)
+            upsert_local_env(env_var, key)
         update_provider_config(provider, env_var)
         if provider == "openai":
             update_provider_config("gpt", env_var)
@@ -505,22 +593,6 @@ def _prompt_setup_providers() -> list[str]:
         if answer in ("y", "yes"):
             selected.append(provider)
     return selected
-
-
-def _upsert_local_env(key: str, value: str) -> None:
-    env_path = Path(".env")
-    lines = []
-    found = False
-    if env_path.exists():
-        for line in env_path.read_text(encoding="utf-8").splitlines():
-            if line.startswith(f"{key}="):
-                lines.append(f"{key}={value}")
-                found = True
-            else:
-                lines.append(line)
-    if not found:
-        lines.append(f"{key}={value}")
-    env_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
 def _warn_missing_providers(agents) -> None:

@@ -26,7 +26,22 @@ can use MCP tools under your supervision — that is what aichat is for.
 - **Human-in-the-loop ready.** Optional relay mode pauses for your
   approval before any cross-model handoff.
 
-## Quick start: Codex + Claude on your codebase
+## Quick start (interactive): `aichat new`
+
+The fastest path. The wizard walks you through picking models, naming
+agents, configuring API keys inline, and previews the YAML before saving.
+
+```bash
+pip install -e ".[wizard]"
+aichat new
+```
+
+You'll be asked how many agents you want, which models or local CLIs to
+use, and what the task is. The wizard saves a YAML config, runs a
+pre-flight readiness check, and offers to launch the session immediately.
+Use this when you don't know yet which template fits.
+
+## Quick start (deterministic): Codex + Claude on your codebase
 
 ```bash
 pip install -e .
@@ -38,7 +53,7 @@ aichat task --config aichat.codex-claude-fresh.yaml
 Two local CLIs, one shared task, full transcript. Edit the YAML to point
 each agent at the project you want them to work on.
 
-## Quick start: 100% local with Ollama and the filesystem tool
+## Quick start (deterministic): 100% local with Ollama and the filesystem tool
 
 No API keys. No cloud. Read-only filesystem access for the agent.
 
@@ -58,10 +73,12 @@ recorded.
 pip install -e .
 ```
 
-Optional: MCP SDK for tool discovery and execution.
+Optional extras:
 
 ```bash
-pip install -e ".[mcp]"
+pip install -e ".[mcp]"      # MCP SDK for tool discovery and execution
+pip install -e ".[wizard]"   # questionary, used by `aichat new`
+pip install -e ".[mcp,wizard]"  # both
 ```
 
 Configure providers (any subset is fine — only the ones you'll use):

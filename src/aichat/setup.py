@@ -150,3 +150,21 @@ def update_provider_config(provider: str, env_var: str) -> Path:
         raise ValueError("User config field 'providers' must be a mapping")
     providers[provider] = {"api_key_env": env_var}
     return save_user_config(config)
+
+
+def upsert_local_env(key: str, value: str, path: str | Path = LOCAL_ENV_PATH) -> Path:
+    """Set or update KEY=VALUE inside a .env file, preserving other lines."""
+    env_path = Path(path)
+    lines: list[str] = []
+    found = False
+    if env_path.exists():
+        for line in env_path.read_text(encoding="utf-8").splitlines():
+            if line.startswith(f"{key}="):
+                lines.append(f"{key}={value}")
+                found = True
+            else:
+                lines.append(line)
+    if not found:
+        lines.append(f"{key}={value}")
+    env_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return env_path

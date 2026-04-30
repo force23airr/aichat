@@ -6,6 +6,7 @@ surface.
 
 ## Table of contents
 
+- [Building a session interactively](#building-a-session-interactively)
 - [Running tasks from the CLI](#running-tasks-from-the-cli)
 - [Config-driven agents](#config-driven-agents)
 - [MCP tools](#mcp-tools)
@@ -13,6 +14,72 @@ surface.
 - [Human-supervised relay](#human-supervised-relay)
 - [Docker](#docker)
 - [Classification](#classification)
+
+## Building a session interactively
+
+The `aichat new` command walks you through building a session config without
+writing YAML. It is the fastest path for new users; the deterministic
+template path (`aichat init`) remains first-class for users who already
+know what they want.
+
+Install the optional dependency:
+
+```bash
+pip install -e ".[wizard]"
+```
+
+Run it:
+
+```bash
+aichat new
+```
+
+The wizard asks, in order:
+
+1. What the agents should work on (the task).
+2. How many agents (default 2; up to 10).
+3. For each agent: API model or local CLI? Which one?
+4. For each agent: a name, a role (with sensible defaults), and any
+   inline API key setup needed for the chosen provider.
+5. Which agent starts.
+6. Maximum number of turns (1–50).
+7. Where to save the YAML (default `aichat.session.yaml`).
+
+After the YAML is written, the wizard runs a pre-flight readiness check
+(equivalent to `aichat doctor --config <file>`) to surface any missing
+keys or CLI binaries before launching. Then it offers to run the session
+immediately.
+
+Flags:
+
+- `--output PATH` / `-o PATH` — override the default output filename.
+- `--force` — overwrite an existing file without confirming.
+- `--no-run` — skip the post-preview run prompt; just write the YAML
+  and exit.
+
+Inline API key setup:
+
+When the wizard sees that you picked a provider whose key is not set, it
+will offer to set it for you right there. The key is appended to a local
+`.env` file via the same upsert path used by `aichat setup`. The YAML
+contains only the provider alias; **no secrets are written into the
+YAML.**
+
+Local CLI agents:
+
+The wizard offers presets for `codex`, `claude` (Claude Code), and
+`ollama`-as-CLI, plus a "custom command" path. It runs `shutil.which()`
+to verify the binary is on `PATH` and warns before continuing if it is
+missing.
+
+Resilience guards baked in:
+
+- Agent names are validated for uniqueness and `[a-z][a-z0-9_]*` shape.
+- `max_turns` is capped at 50 in the wizard (the bridge itself is
+  unbounded — edit the YAML if you need more).
+- Existing files are never silently overwritten.
+- Pre-flight readiness runs before launch and prompts for confirmation
+  if any provider or CLI is unconfigured.
 
 ## Running tasks from the CLI
 
